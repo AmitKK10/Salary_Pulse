@@ -1,0 +1,105 @@
+{
+  "name": "SalaryPulse — Salary & Attendance Intelligence",
+  "short_name": "SalaryPulse",
+  "description": "Personal real-time salary, attendance, working-hours, overtime and salary prediction dashboard.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
+  "categories": ["finance", "productivity", "business", "utilities"],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "shortcuts": [
+    {
+      "name": "Start Work",
+      "short_name": "Start",
+      "description": "Clock in and start active work timer",
+      "url": "/?action=start-work",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Take Break",
+      "short_name": "Break",
+      "description": "Start lunch / coffee break countdown",
+      "url": "/?action=take-break",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Resume Work",
+      "short_name": "Resume",
+      "description": "End break and resume active work",
+      "url": "/?action=resume-work",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Clock Out",
+      "short_name": "Clock Out",
+      "description": "End workday and finalize daily wage calculation",
+      "url": "/?action=clock-out",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View monthly summary and salary metrics",
+      "url": "/?tab=dashboard",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ],
+  "widgets": [
+    {
+      "name": "SalaryPulse Live Widget",
+      "short_name": "SalaryPulse",
+      "description": "Live salary, daily hours, weekly/monthly progress, and quick punch actions",
+      "tag": "salarypulse-widget",
+      "template": "widget-template",
+      "ms_ac_template": "widget-adaptive.json",
+      "data": "/api/widget-data",
+      "type": "application/json",
+      "screenshots": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "512x512",
+          "label": "SalaryPulse Android Widget"
+        }
+      ]
+    }
+  ],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

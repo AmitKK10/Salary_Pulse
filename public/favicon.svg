@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141414" />
+      <stop offset="50%" stop-color="#0A0A0A" />
+      <stop offset="100%" stop-color="#050505" />
+    </linearGradient>
+    <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="50%" stop-color="#D4AF37" />
+      <stop offset="100%" stop-color="#FDE68A" />
+    </linearGradient>
+    <linearGradient id="glow-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D4AF37" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#D4AF37" stop-opacity="0" />
+    </linearGradient>
+    <filter id="subtle-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#bg-grad)" />
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="#262626" stroke-width="3" />
+
+  <!-- Inner Ambient Glow Circle -->
+  <circle cx="256" cy="256" r="160" fill="url(#glow-gold)" />
+
+  <!-- Rupee Symbol + Financial Pulse Waveform -->
+  <g transform="translate(64, 96)">
+    <!-- ₹ Currency Core Character Silhouette -->
+    <path d="M 90 60 L 220 60 M 90 95 L 200 95 M 90 60 L 90 190 M 90 95 C 170 95 180 160 90 170 L 190 270" 
+          fill="none" 
+          stroke="#333333" 
+          stroke-width="16" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" />
+
+    <!-- Pulse Line Passing Through (Financial EKG / Growth Line) -->
+    <path d="M 0 170 L 80 170 L 115 120 L 150 220 L 195 70 L 240 210 L 275 140 L 310 170 L 384 170" 
+          fill="none" 
+          stroke="url(#gold-grad)" 
+          stroke-width="20" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"
+          filter="url(#subtle-glow)" />
+
+    <!-- Secondary Accent Upward Arrow Indicator -->
+    <path d="M 340 100 L 384 100 L 384 144 M 384 100 L 320 164" 
+          fill="none" 
+          stroke="#D4AF37" 
+          stroke-width="14" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" />
+  </g>
+
+  <!-- Live Emerald Pulse Dot -->
+  <circle cx="400" cy="112" r="18" fill="#10B981" />
+  <circle cx="400" cy="112" r="28" fill="none" stroke="#10B981" stroke-width="4" opacity="0.6" />
+</svg>
