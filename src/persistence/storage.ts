@@ -63,25 +63,19 @@ export class StorageService {
    */
   static initStorage(): void {
     try {
-      const seedMarker = localStorage.getItem('salarypulse_seeded_aug2026_v4');
-      const existingConfig = localStorage.getItem(STORAGE_KEYS.SALARY_CONFIG);
-      const existingSchedule = localStorage.getItem(STORAGE_KEYS.SCHEDULE);
-      const existingDays = localStorage.getItem(STORAGE_KEYS.ATTENDANCE_DAYS);
+      const SEED_MARKER = 'salarypulse_seeded_sept2026_v7';
+      const seedMarker = localStorage.getItem(SEED_MARKER);
 
       if (!seedMarker) {
-        // Only seed initial default data if NO existing saved configuration is found in localStorage
-        if (!existingConfig && !existingSchedule && !existingDays) {
-          this.resetAll();
-          localStorage.removeItem('salarypulse_active_today_date');
-          localStorage.setItem('salarypulse_active_today_date', '2026-08-31');
-          localStorage.setItem(STORAGE_KEYS.SELECTED_MONTH, '2026-08');
-          localStorage.setItem(STORAGE_KEYS.ACTIVE_TAB, 'live-work');
-          this.saveAttendanceDays(INITIAL_ATTENDANCE_DAYS);
-          this.saveSalaryConfig(INITIAL_SALARY_CONFIG);
-          this.saveSchedule(INITIAL_SCHEDULE);
-          this.saveHolidays(INITIAL_HOLIDAYS);
-        }
-        localStorage.setItem('salarypulse_seeded_aug2026_v4', 'true');
+        // Seed initial authoritative punch records (73 dates: May 25, 2026 - Sep 5, 2026)
+        this.saveAttendanceDays(INITIAL_ATTENDANCE_DAYS);
+        this.saveSalaryConfig(INITIAL_SALARY_CONFIG);
+        this.saveSchedule(INITIAL_SCHEDULE);
+        this.saveHolidays(INITIAL_HOLIDAYS);
+        localStorage.setItem('salarypulse_active_today_date', '2026-09-05');
+        localStorage.setItem(STORAGE_KEYS.SELECTED_MONTH, '2026-09');
+        localStorage.setItem(STORAGE_KEYS.ACTIVE_TAB, 'attendance');
+        localStorage.setItem(SEED_MARKER, 'true');
         localStorage.setItem(STORAGE_KEYS.SCHEMA_VERSION, String(CURRENT_SCHEMA_VERSION));
         return;
       }
@@ -263,7 +257,33 @@ export class StorageService {
   }
 
   static getAttendanceDays(): AttendanceDay[] {
-    return this.getItem(STORAGE_KEYS.ATTENDANCE_DAYS, INITIAL_ATTENDANCE_DAYS);
+    const days = this.getItem(STORAGE_KEYS.ATTENDANCE_DAYS, INITIAL_ATTENDANCE_DAYS);
+    // Self-healing migration: On single punch-in/punch-out days (e.g. 2026-08-01 with 3h 45m duration),
+    // no lunch deduction is applied (3h 45m = 13,500s worked).
+    return days.map(d => {
+      if (d.date === '2026-08-01' && (d.totalActiveSeconds === 9900 || (d.totalBreakSeconds || 0) > 0)) {
+        return {
+          ...d,
+          totalActiveSeconds: 13500,
+          creditedNormalSeconds: 13500,
+          totalBreakSeconds: 0,
+          breakSessions: [],
+          workSessions: d.workSessions && d.workSessions.length > 0
+            ? d.workSessions.map(ws => ({ ...ws, durationSeconds: 13500 }))
+            : [
+                {
+                  id: `ws-1-${d.date}`,
+                  startTime: `${d.date}T14:37:57`,
+                  endTime: `${d.date}T18:22:00`,
+                  durationSeconds: 13500,
+                  status: 'COMPLETED',
+                  source: 'IMPORTED',
+                }
+              ],
+        };
+      }
+      return d;
+    });
   }
 
   static getAppSettings(): AppSettings {

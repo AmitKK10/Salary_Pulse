@@ -99,7 +99,7 @@ export const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({ 
 
     // Append active/selected running month from live engines
     const runningBase = salaryCalculation.grossEarnedBasePay || Math.round(salaryConfig.monthlyBaseSalary * 0.5);
-    const runningOT = Math.round(salaryCalculation.grossPay - salaryCalculation.grossEarnedBasePay);
+    const runningOT = Math.round(salaryCalculation.overtimePay);
     const runningBonus = salaryCalculation.attendanceBonusApproved ? (salaryConfig.attendanceBonusAmount || 3000) : 0;
     const runningTotal = Math.round(salaryCalculation.realtimeEarnedSoFar);
 

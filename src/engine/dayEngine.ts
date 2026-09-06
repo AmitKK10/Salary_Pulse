@@ -337,7 +337,9 @@ export class DayEngine {
           dayRecord.firstPunchIn,
           dayRecord.lastPunchOut
         );
-        actualActiveSeconds = workRes.totalActiveSeconds;
+        actualActiveSeconds = dayRecord.totalActiveSeconds && dayRecord.totalActiveSeconds > 0
+          ? dayRecord.totalActiveSeconds
+          : workRes.totalActiveSeconds;
         firstPunchIn = workRes.firstPunchIn || dayRecord.firstPunchIn;
         lastPunchOut = workRes.lastPunchOut || dayRecord.lastPunchOut;
       } else if (dayRecord.firstPunchIn && dayRecord.lastPunchOut) {
@@ -349,7 +351,8 @@ export class DayEngine {
           actualActiveSeconds = 0;
         } else {
           const span = Math.max(0, Math.floor((endMs - startMs) / 1000));
-          actualActiveSeconds = Math.max(0, span - configuredLunchSec);
+          // Single punch in / punch out: no lunch deduction
+          actualActiveSeconds = span;
         }
       } else {
         actualActiveSeconds = dayRecord.totalActiveSeconds || 0;
@@ -398,9 +401,12 @@ export class DayEngine {
       if (liveOverride?.workdayStatus) {
         status = liveOverride.workdayStatus;
         statusLabel = status === 'WORKING' ? 'Working (Live)' : status === 'ON_BREAK' ? 'On Break' : status === 'COMPLETED' ? 'Completed' : 'Running';
-      } else if (actualActiveSeconds >= requiredNormalSeconds) {
+      } else if (dayRecord?.workdayStatus === 'COMPLETED' || dayRecord?.lastPunchOut || actualActiveSeconds >= requiredNormalSeconds) {
         status = 'COMPLETED';
-        statusLabel = 'Completed (Target Met)';
+        statusLabel = 'Completed';
+      } else if (actualActiveSeconds > 3600 && actualActiveSeconds < 14400) {
+        status = 'PARTIAL';
+        statusLabel = 'Half Day';
       } else if (actualActiveSeconds > 0) {
         status = 'WORKING';
         statusLabel = 'Working (Live)';
@@ -410,7 +416,11 @@ export class DayEngine {
       }
     } else if (dayRecord) {
       const rawSt = String(dayRecord.status || dayRecord.workdayStatus || '').toUpperCase();
-      if (rawSt === 'PRESENT' || actualActiveSeconds >= requiredNormalSeconds * 0.9) {
+      // Half-day attendance rule: if worked > 1 hour (3600s) & < 4 hours (14400s)
+      if (actualActiveSeconds > 3600 && actualActiveSeconds < 14400) {
+        status = 'PARTIAL';
+        statusLabel = 'Half Day';
+      } else if (rawSt === 'PRESENT' || actualActiveSeconds >= requiredNormalSeconds * 0.9) {
         status = 'PRESENT';
         statusLabel = 'Present';
       } else if (rawSt === 'PARTIAL' || rawSt === 'HALF_DAY' || actualActiveSeconds > 0) {
@@ -748,24 +758,30 @@ export class DayEngine {
         needsReviewCount++;
       }
 
-      switch (details.status) {
-        case 'PRESENT':
-        case 'COMPLETED':
-          presentDaysCount++;
-          break;
-        case 'PARTIAL':
-        case 'WORKING':
-          partialDaysCount++;
-          break;
-        case 'ABSENT':
-          absentDaysCount++;
-          break;
-        case 'PAID_LEAVE':
-          paidLeaveCount++;
-          break;
-        case 'UNPAID_LEAVE':
-          unpaidLeaveCount++;
-          break;
+      // Attendance tallying rule:
+      // Half day attendance: worked > 1 hour (3600s) and < 4 hours (14400s) -> 0.5 attendance
+      // Full day attendance: worked >= 4 hours (14400s) or status PRESENT/COMPLETED -> 1.0 attendance
+      if (details.actualActiveSeconds > 3600 && details.actualActiveSeconds < 14400) {
+        presentDaysCount += 0.5;
+        partialDaysCount++;
+      } else if (details.actualActiveSeconds >= 14400 || details.status === 'PRESENT' || details.status === 'COMPLETED') {
+        presentDaysCount += 1.0;
+      } else {
+        switch (details.status) {
+          case 'PARTIAL':
+          case 'WORKING':
+            partialDaysCount++;
+            break;
+          case 'ABSENT':
+            absentDaysCount++;
+            break;
+          case 'PAID_LEAVE':
+            paidLeaveCount++;
+            break;
+          case 'UNPAID_LEAVE':
+            unpaidLeaveCount++;
+            break;
+        }
       }
 
       if (details.isPast) {

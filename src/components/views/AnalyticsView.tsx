@@ -286,6 +286,9 @@ export const AnalyticsView: React.FC = () => {
           {/* Top Lifetime / Timeframe KPIs */}
           <CoreLifetimeKPIs kpis={kpis} timeframeLabel={timeframeLabel} />
 
+          {/* Time-to-Money Deterministic Rates Matrix */}
+          <TimeToMoneyCard conversionData={timeMoneyConversion} />
+
           {/* Running Month Pacing & Trajectory */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <MonthEndPaceCard pace={monthEndPace} />
@@ -351,6 +354,9 @@ export const AnalyticsView: React.FC = () => {
             <MonthlyNormalHourProgressCard progress={monthlyProgress} />
             <MonthEndPaceCard pace={monthEndPace} />
           </div>
+
+          {/* Active Month Per-Day, Per-Hour, Per-Minute, Per-Second Earnings Engine */}
+          <TimeToMoneyCard conversionData={timeMoneyConversion} />
 
           {/* Break and Punctuality */}
           <BreakAndPunctualityCard

@@ -36,7 +36,15 @@ export class OvertimeEngine {
     schedule: WorkSchedule,
     holidays: Holiday[]
   ): OvertimeResult {
-    const scheduledDaysCount = 26; // Standard 26-day monthly basis (26 * 8 = 208h)
+    const [year, month] = yearMonth.split('-').map(Number);
+    const calendarDays = new Date(year, month, 0).getDate();
+    let sundaysCount = 0;
+    for (let d = 1; d <= calendarDays; d++) {
+      if (new Date(year, month - 1, d).getDay() === 0) {
+        sundaysCount++;
+      }
+    }
+    const scheduledDaysCount = calendarDays - sundaysCount;
     const requiredDailySeconds = Math.round((schedule?.requiredActiveHoursPerDay || 8.0) * 3600);
     const monthlyTargetSeconds = scheduledDaysCount * requiredDailySeconds;
     const monthlyTargetHours = monthlyTargetSeconds / 3600;

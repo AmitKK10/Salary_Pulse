@@ -248,3 +248,51 @@ body.light-theme,
   background: #94A3B8;
 }
 
+/* Glass Vessel Filling Animations */
+@keyframes liquidWave {
+  0% { transform: translateX(0) translateZ(0) scaleY(1); }
+  50% { transform: translateX(-25%) translateZ(0) scaleY(1.15); }
+  100% { transform: translateX(0) translateZ(0) scaleY(1); }
+}
+
+@keyframes liquidWaveReverse {
+  0% { transform: translateX(-25%) translateZ(0) scaleY(0.9); }
+  50% { transform: translateX(0) translateZ(0) scaleY(1.1); }
+  100% { transform: translateX(-25%) translateZ(0) scaleY(0.9); }
+}
+
+@keyframes bubbleRiseSlow {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  30% { opacity: 0.7; }
+  80% { opacity: 0.8; }
+  100% { transform: translateY(-70px) scale(1.1); opacity: 0; }
+}
+
+@keyframes bubbleRiseFast {
+  0% { transform: translateY(0) scale(0.5); opacity: 0; }
+  40% { opacity: 0.9; }
+  90% { opacity: 0.9; }
+  100% { transform: translateY(-90px) scale(1.2); opacity: 0; }
+}
+
+.animate-liquid-wave {
+  animation: liquidWave 4s ease-in-out infinite;
+}
+
+.animate-liquid-wave-rev {
+  animation: liquidWaveReverse 3.2s ease-in-out infinite;
+}
+
+.animate-bubble-1 {
+  animation: bubbleRiseSlow 2.8s ease-in infinite;
+}
+
+.animate-bubble-2 {
+  animation: bubbleRiseFast 2.1s ease-in infinite 0.7s;
+}
+
+.animate-bubble-3 {
+  animation: bubbleRiseSlow 3.4s ease-in infinite 1.3s;
+}
+
+

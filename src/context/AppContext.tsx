@@ -56,6 +56,7 @@ import { DataIntegrityEngine } from '../engine/dataIntegrityEngine';
 import { AnalyticsEngine } from '../engine/analyticsEngine';
 import { NotificationEngine } from '../engine/notificationEngine';
 import { NotificationService } from '../services/notificationService';
+import { formatTimeDisplay, formatDurationHM } from '../utils/formatters';
 import { runStep9Tests, Step9TestCaseResult } from '../engine/step9TestCases';
 import { runStep11ComprehensiveQA, Step11TestCaseResult } from '../engine/step11VerificationRunner';
 import { 
@@ -258,7 +259,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [selectedMonth, setSelectedMonthState] = useState<string>(() => {
-    return StorageService.getSelectedMonth() || '2026-08';
+    return StorageService.getSelectedMonth() || '2026-09';
   });
 
   const [user, setUserState] = useState<User>(() => StorageService.getUser());
@@ -279,7 +280,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {
       // ignore
     }
-    return '2026-08-31';
+    return '2026-09-05';
   });
 
   const setTodayDate = (date: string) => {
@@ -821,6 +822,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     updateAttendanceDay(updatedDay);
     logAudit('PUNCH_IN', 'workSessions', 'CLOSED', `OPEN (${timestamp})${punctualityTag}`, note);
+
+    // Trigger visual 'Success' toast notification for check-in
+    NotificationService.pushInAppNotification({
+      id: `toast-checkin-${Date.now()}`,
+      title: 'Checked In Successfully',
+      message: `Work session started at ${formatTimeDisplay(timestamp)}${punctualityTag ? ` · ${punctualityTag.trim()}` : ''}. Accruing live salary!`,
+      severity: 'success',
+      timestamp,
+      milestoneKey: 'check-in',
+      autoDismissMs: 4000,
+    });
+
     return { success: true };
   };
 
@@ -878,6 +891,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     updateAttendanceDay(updatedDay);
     logAudit('PUNCH_OUT', 'workSessions', 'OPEN', `CLOSED (${timestamp})`, note);
+
+    // Trigger visual 'Success' toast notification for check-out
+    NotificationService.pushInAppNotification({
+      id: `toast-checkout-${Date.now()}`,
+      title: 'Checked Out Successfully',
+      message: `Work session clocked out at ${formatTimeDisplay(timestamp)}. Total active today: ${formatDurationHM(activeSec)}.`,
+      severity: 'success',
+      timestamp,
+      milestoneKey: 'check-out',
+      autoDismissMs: 4000,
+    });
+
     return { success: true };
   };
 
@@ -1042,6 +1067,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     updateAttendanceDay(updatedDay);
     logAudit('PUNCH_IN', 'workSessions', 'ON_BREAK', `RESUMED (${timestamp}) [${breakLogInfo}]`, note);
+
+    // Trigger visual 'Success' toast notification for resuming check-in
+    NotificationService.pushInAppNotification({
+      id: `toast-checkin-resumed-${Date.now()}`,
+      title: 'Checked In Successfully',
+      message: `Work session resumed at ${formatTimeDisplay(timestamp)} (${breakLogInfo}). Accruing live salary!`,
+      severity: 'success',
+      timestamp,
+      milestoneKey: 'check-in',
+      autoDismissMs: 4000,
+    });
+
     return { success: true };
   };
 
@@ -1144,6 +1181,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     updateAttendanceDay(updatedDay);
     logAudit('END_DAY', 'workdayStatus', todayAttendance.workdayStatus, `COMPLETED (${timestamp})`, note);
     logAudit('END_DAY', 'finishedAt', todayAttendance.finishedAt, timestamp, note || 'End Work workday concluded');
+
+    // Trigger visual 'Success' toast notification for end-of-day check-out
+    NotificationService.pushInAppNotification({
+      id: `toast-checkout-end-${Date.now()}`,
+      title: 'Checked Out Successfully',
+      message: `Shift completed at ${formatTimeDisplay(timestamp)}. Total active: ${formatDurationHM(finalActiveSec)} · Estimated pay: ₹${totalDayPay.toFixed(0)}.`,
+      severity: 'success',
+      timestamp,
+      milestoneKey: 'check-out',
+      autoDismissMs: 4500,
+    });
 
     return {
       success: true,

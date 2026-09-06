@@ -324,6 +324,7 @@ export interface SalaryConfig {
   // Effective date management
   effectiveFrom: string; // YYYY-MM-DD
   effectiveTo?: string;   // YYYY-MM-DD (optional, ongoing if undefined)
+  joiningDate?: string;   // Optional joining date for partial-month proration (YYYY-MM-DD)
 }
 
 export interface BreakSession {
@@ -405,21 +406,58 @@ export interface Holiday {
   customAmount?: number; // e.g. 500
 }
 
+export interface SandwichSundayDetails {
+  sundayDate: string;
+  saturdayDate: string;
+  mondayDate: string;
+  isSandwich: boolean;
+  saturdayStatus: string;
+  mondayStatus: string;
+  deduction: number;
+}
+
+export interface BenchmarkAudit {
+  month: string;
+  confirmedSalary: number;
+  officialHoursFormatted: string;
+  officialHoursSeconds: number;
+  actualHoursFormatted: string;
+  actualHoursSeconds: number;
+  varianceSeconds: number;
+  varianceHoursFormatted: string;
+  varianceSalary: number;
+  isExactMatch: boolean;
+  notes: string;
+  explanation: string;
+}
+
 export interface RateDerivation {
   yearMonth: string;
-  scheduledWorkingDays: number;
+  calendarDays: number;
+  sundayCount: number; // authoritative alias
+  sundaysCount: number;
+  scheduledWorkingDays: number; // workingDays = calendarDays - sundaysCount
+  workingDays: number;
   requiredDailyHours: number;
   totalRequiredMonthlyHours: number;
+  requiredMinutes: number; // authoritative alias
+  totalRequiredMonthlyMinutes: number;
   totalRequiredMonthlySeconds: number;
   
   monthlyBaseSalary: number;
-  perDayRate: number;
-  perHourRate: number;
-  perMinuteRate: number;
-  perSecondRate: number;
+  dailyRate: number; // full decimal unrounded rate
+  perDayRate: number; // alias
+  shortfallHourlyRate: number; // dailyRate / 8
+  hourlyShortfallRate: number; // alias
+  perHourRate: number; // alias
+  minuteShortfallRate: number; // hourlyShortfallRate / 60
+  perMinuteRate: number; // alias
+  secondShortfallRate: number; // hourlyShortfallRate / 3600
+  perSecondRate: number; // alias
   
   overtimeMultiplier: number;
-  overtimeHourlyRate: number;
+  overtimeRate: number; // confirmed ₹75/hr alias
+  overtimeHourlyRate: number; // confirmed ₹75/hr
   overtimeSecondRate: number;
 }
 
@@ -429,16 +467,28 @@ export interface SalaryCalculation {
   
   // Rate matrix
   rates: RateDerivation;
+  dailyRate: number;
+  shortfallHourlyRate: number;
+  hourlyShortfallRate: number;
   perDayRate: number;
   perHourRate: number;
   perMinuteRate: number;
   perSecondRate: number;
+  overtimeRate: number; // confirmed ₹75/hr alias
   overtimeHourlyRate: number;
   
-  // Scheduled & Active Metrics
+  // Calendar & Scheduled Metrics
+  calendarDays: number;
+  sundayCount: number; // authoritative alias
+  sundaysCount: number;
   scheduledWorkingDays: number;
+  workingDays: number;
+  requiredMinutes: number; // authoritative alias
+  actualMinutes: number; // authoritative alias
   totalRequiredHours: number;
+  totalRequiredMinutes: number;
   totalRequiredSeconds: number;
+  requiredWorkingHoursFormatted: string; // e.g. "208:00:00"
   
   actualPresentDays: number;
   halfDays: number;
@@ -448,17 +498,42 @@ export interface SalaryCalculation {
   weeklyOffDays: number;
   holidaysCount: number;
   
-  // Work time metrics (in seconds)
+  // Work time metrics (in seconds and formatted HH:MM:SS)
   totalActiveSecondsWorked: number;
   totalActiveHoursWorked: number;
+  actualWorkedHoursFormatted: string; // e.g. "169:10:00" or "169:15:00"
   creditedNormalSeconds: number;
   totalBreakSeconds: number;
   
+  // Monthly Work Difference (Shortfall vs Overtime)
+  differenceSeconds: number; // totalActiveSecondsWorked - totalRequiredSeconds
+  differenceHoursFormatted: string; // e.g. "-38:50:00" or "+01:21:36"
+  isShortfall: boolean;
+  isOvertime: boolean;
+  
+  // Shortfall metrics
+  shortfallSeconds: number;
+  shortfallMinutes: number;
+  shortfallHours: number;
+  shortfallHoursFormatted: string; // e.g. "38:50:00"
+  shortfallDeduction: number; // exact unrounded formula
+  
   // Overtime metrics
   overtimeSeconds: number;
-  overtimePay: number;
+  overtimeMinutes: number;
+  overtimeHours: number;
+  overtimeHoursFormatted: string; // e.g. "01:21:36"
+  overtimePay: number; // exact unrounded formula (hours * 75)
+  
+  // Sandwich Sunday metrics
+  sandwichSundayCount: number; // authoritative alias
+  sandwichSundaysCount: number;
+  sandwichSundayDates: string[];
+  sandwichSundayDetails: SandwichSundayDetails[];
+  sandwichSundayDeduction: number;
   
   // Wage components
+  baseSalary: number; // 15,000
   grossEarnedBasePay: number;
   creditedHolidayPay: number;
   
@@ -474,11 +549,22 @@ export interface SalaryCalculation {
   itemizedDeductions: { id: string; name: string; amount: number }[];
   
   // Final wage totals
+  unroundedFinalSalary: number;
+  finalSalary: number; // Math.round(unroundedFinalSalary)
   grossPay: number;
   netSalary: number;
   
   // Real-time live accrued metrics
   realtimeEarnedSoFar: number;
+  isRunningMonth?: boolean;
+  projectedMonthEndSalary?: number;
+  
+  // Benchmark comparison & validation audit
+  benchmarkAudit?: BenchmarkAudit;
+
+  // Diagnostic audit properties
+  holidayCreditMinutes: number;
+  actualWorkSource: 'OFFICIAL_WORK_DURATION' | 'RAW_PUNCH_SESSIONS';
 }
 
 export interface SalaryPrediction {

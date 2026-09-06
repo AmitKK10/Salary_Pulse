@@ -441,7 +441,18 @@ export class PredictionEngine {
     });
 
     // Month-End Totals
-    const projectedMonthEndTotal = Math.max(0, Number((actualEarnings + projectedFutureEarnings - totalDeductions).toFixed(2)));
+    let projectedMonthEndTotal = Math.max(0, Number((actualEarnings + projectedFutureEarnings - totalDeductions).toFixed(2)));
+    if (projectedFuturePlannedWorkSeconds === 0 && futureLeaveDays === 0) {
+      const authoritativeCalc = SalaryEngine.calculateMonthlySalary(
+        yearMonth,
+        config,
+        schedule,
+        attendanceDays,
+        holidays,
+        deductions
+      );
+      projectedMonthEndTotal = authoritativeCalc.finalSalary;
+    }
     const projectedMonthEndWithBonus = Math.max(0, Number((projectedMonthEndTotal + projectedBonus).toFixed(2)));
 
     // Salary Gap Analysis

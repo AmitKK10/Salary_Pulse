@@ -1137,6 +1137,7 @@ export class AnalyticsEngine {
     const rates = SalaryEngine.deriveRates(yearMonth, salaryConfig, schedule, holidays);
 
     return {
+      dailySalary: rates.dailyRate,
       normalHourlyRate: rates.perHourRate,
       normalMinuteRate: rates.perMinuteRate,
       normalSecondRate: rates.perSecondRate,
@@ -1147,6 +1148,9 @@ export class AnalyticsEngine {
       oneHourOTPay: rates.overtimeHourlyRate,
       eightHoursNormalPay: rates.perDayRate,
       thirtyMinLunchValue: Number((rates.perHourRate * 0.5).toFixed(2)),
+      calendarDays: rates.calendarDays,
+      workingDays: rates.workingDays,
+      monthLabel: yearMonth,
     };
   }
 

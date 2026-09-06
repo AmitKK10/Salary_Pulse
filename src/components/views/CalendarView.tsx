@@ -44,6 +44,8 @@ export const CalendarView: React.FC = () => {
     monthlyRunningSummary,
     getDayDetails,
     todayDate,
+    isCurrentlyWorking,
+    isOnBreak,
   } = useApp();
 
   const [inspectDay, setInspectDay] = useState<DayCalculationDetails | null>(null);
@@ -451,11 +453,14 @@ export const CalendarView: React.FC = () => {
               const isPresent = day.status === 'PRESENT' || day.status === 'WORKING' || day.status === 'COMPLETED';
               const hasSuspicious = day.isSuspicious;
 
+              // Actively live shift check: today, shift running, not completed
+              const isActivelyLive = isToday && isCurrentlyWorking && !isOnBreak && day.status !== 'COMPLETED' && !day.isWorkdayConcluded;
+
               // Format compact text for mobile
               let microLabel = '';
               let microBg = 'bg-[#1F1F1F] text-[#737373]';
 
-              if (isToday) {
+              if (isActivelyLive) {
                 microLabel = 'LIVE';
                 microBg = 'bg-[#10B981] text-black font-bold';
               } else if (isPresent) {
@@ -490,8 +495,10 @@ export const CalendarView: React.FC = () => {
                   className={`text-left relative min-h-[72px] sm:min-h-[110px] p-1.5 sm:p-2.5 rounded-xl sm:rounded-2xl border transition-all duration-150 flex flex-col justify-between overflow-hidden group ${
                     isSelected
                       ? 'ring-2 ring-[#D4AF37] bg-[#1E1E1E] border-[#D4AF37] shadow-xl z-10'
-                      : isToday
+                      : isActivelyLive
                       ? 'bg-[#122218] border-[#10B981]/60 ring-1 ring-[#10B981]/40'
+                      : isToday && isPresent
+                      ? 'bg-[#121f18] border-[#10B981]/40'
                       : hasSuspicious
                       ? 'bg-rose-950/20 border-rose-500/40'
                       : isHoliday
@@ -505,8 +512,10 @@ export const CalendarView: React.FC = () => {
                   <div className="flex items-center justify-between w-full">
                     <span
                       className={`font-mono text-xs sm:text-sm font-bold ${
-                        isToday
+                        isActivelyLive
                           ? 'text-[#10B981]'
+                          : isToday
+                          ? 'text-emerald-400'
                           : isSelected
                           ? 'text-[#D4AF37]'
                           : isWeeklyOff
@@ -524,7 +533,7 @@ export const CalendarView: React.FC = () => {
                       {hasSuspicious && (
                         <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-rose-500 animate-pulse" title="Needs Review" />
                       )}
-                      {isToday ? (
+                      {isActivelyLive ? (
                         <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping sm:hidden" />
                       ) : isPresent ? (
                         <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] sm:hidden" />
@@ -536,7 +545,7 @@ export const CalendarView: React.FC = () => {
 
                       {/* Desktop badge */}
                       <span className="hidden sm:inline-block">
-                        {isToday ? (
+                        {isActivelyLive ? (
                           <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#10B981] text-black font-bold uppercase">
                             LIVE
                           </span>

@@ -277,6 +277,7 @@ export interface DailyEarningTrajectoryPoint {
 }
 
 export interface TimeMoneyConversionData {
+  dailySalary: number;
   normalHourlyRate: number;
   normalMinuteRate: number;
   normalSecondRate: number;
@@ -287,6 +288,9 @@ export interface TimeMoneyConversionData {
   oneHourOTPay: number;
   eightHoursNormalPay: number;
   thirtyMinLunchValue: number;
+  calendarDays?: number;
+  workingDays?: number;
+  monthLabel?: string;
 }
 
 export interface BreakAnalyticsData {

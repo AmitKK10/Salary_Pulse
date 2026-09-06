@@ -22,15 +22,18 @@ export const formatSecondsToDetailed = (seconds: number): string => {
 };
 
 export const formatSecondsToClock = (seconds: number): string => {
-  const s = Math.max(0, Math.floor(seconds));
+  const isNegative = seconds < 0;
+  const s = Math.max(0, Math.floor(Math.abs(seconds)));
   const hrs = Math.floor(s / 3600);
   const mins = Math.floor((s % 3600) / 60);
   const secs = s % 60;
   
-  return [hrs, mins, secs].map(v => String(v).padStart(2, '0')).join(':');
+  const sign = isNegative ? '-' : '';
+  return `${sign}${[hrs, mins, secs].map(v => String(v).padStart(2, '0')).join(':')}`;
 };
 
 export const formatSecondsToHMS = formatSecondsToClock;
+export const formatSecondsToHHMMSS = formatSecondsToClock;
 
 export const formatDurationHM = (seconds: number): string => {
   const s = Math.max(0, Math.floor(seconds || 0));

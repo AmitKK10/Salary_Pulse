@@ -17,6 +17,8 @@ import { ProgressBar } from '../common/ProgressBar';
 import { Badge } from '../common/Badge';
 import { formatCurrency, formatSecondsToClock, formatSecondsToDetailed, formatTimeDisplay, formatDurationHM } from '../../utils/formatters';
 import { DashboardChartsSection } from '../dashboard/DashboardChartsSection';
+import { WeeklySummaryWidget } from '../dashboard/WeeklySummaryWidget';
+import { WorkProgressPieWidget } from '../dashboard/WorkProgressPieWidget';
 
 export const DashboardView: React.FC = () => {
   const { 
@@ -31,6 +33,7 @@ export const DashboardView: React.FC = () => {
     currentLiveSeconds, 
     currentDayAttendance, 
     todayAttendance,
+    attendanceDays,
     todayRemainingActiveSeconds,
     todayEstimatedCompletion,
     projectedFinishTime,
@@ -97,18 +100,60 @@ export const DashboardView: React.FC = () => {
 
   const hoursProgress = Math.min(100, (salaryCalculation.totalActiveHoursWorked / Math.max(1, salaryCalculation.totalRequiredHours)) * 100);
   const bonusProgress = Math.min(100, (salaryCalculation.actualPresentDays / (salaryConfig.attendanceBonusEligibleDays || 26)) * 100);
-  const effectiveOt = Math.max(0, salaryCalculation.grossPay - salaryCalculation.grossEarnedBasePay);
+  const effectiveOt = salaryCalculation.overtimePay;
 
-  // Weekly bar representation
-  const weeklyBars = [
-    { day: 'MON', height: '85%', color: 'bg-[#D4AF37]/80', hours: '8.5h' },
-    { day: 'TUE', height: '80%', color: 'bg-[#D4AF37]/80', hours: '8.0h' },
-    { day: 'WED', height: '90%', color: 'bg-[#D4AF37]/80', hours: '9.0h' },
-    { day: 'THU', height: '82%', color: 'bg-[#D4AF37]/80', hours: '8.2h' },
-    { day: 'FRI', height: '100%', color: 'bg-[#10B981]', isHighlight: true, hours: '8.6h' },
-    { day: 'SAT', height: '84%', color: 'bg-[#D4AF37]/80', hours: '8.4h' },
-    { day: 'SUN', height: '0%', color: '', isOff: true, hours: 'OFF' },
-  ];
+  // Dynamic weekly bars based on current week's real attendance
+  const weeklyBars = useMemo(() => {
+    const [y, m, d] = (todayDate || '2026-08-15').split('-').map(Number);
+    const refDate = new Date(y, m - 1, d);
+    const dayOfWeek = refDate.getDay();
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(y, m - 1, d + diffToMonday);
+
+    const dayLabels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    const targetHours = schedule?.requiredActiveHoursPerDay || 8.0;
+
+    return dayLabels.map((dayLabel, idx) => {
+      const dayDate = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + idx);
+      const yStr = dayDate.getFullYear();
+      const mStr = String(dayDate.getMonth() + 1).padStart(2, '0');
+      const dStr = String(dayDate.getDate()).padStart(2, '0');
+      const dateStr = `${yStr}-${mStr}-${dStr}`;
+      const isSun = dayDate.getDay() === 0;
+      const isTod = dateStr === todayDate;
+
+      const rec = attendanceDays.find((att) => att.date === dateStr);
+      let sec = 0;
+      if (isTod) {
+        sec = isCurrentlyWorking ? Math.max(rec?.totalActiveSeconds || 0, currentLiveSeconds) : (rec?.totalActiveSeconds || 0);
+      } else if (rec) {
+        sec = rec.totalActiveSeconds || 0;
+      }
+
+      const hrs = sec / 3600;
+      if (isSun) {
+        return { day: dayLabel, height: '0%', color: '', isOff: true, hours: 'OFF' };
+      }
+
+      const percent = Math.min(100, Math.round((hrs / targetHours) * 100));
+      const isOt = hrs > targetHours;
+      const color = isTod
+        ? 'bg-[#10B981]'
+        : isOt
+        ? 'bg-[#10B981]'
+        : hrs > 0
+        ? 'bg-[#D4AF37]/80'
+        : 'bg-[#262626]';
+
+      return {
+        day: dayLabel,
+        height: `${Math.max(10, percent)}%`,
+        color,
+        isHighlight: isTod,
+        hours: `${hrs.toFixed(1)}h`,
+      };
+    });
+  }, [todayDate, attendanceDays, isCurrentlyWorking, currentLiveSeconds, schedule]);
 
   return (
     <div id="dashboard-view" className="space-y-6 pb-12 animate-fadeIn">
@@ -116,49 +161,16 @@ export const DashboardView: React.FC = () => {
       <div className="bg-[#141414] border border-[#222222] rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-mono uppercase tracking-wider text-[#A0A0A0] font-semibold">
-            Calculation Rule:
+            Calculation Engine:
           </span>
-          <span className="text-[11px] text-white font-medium">
-            {salaryConfig.calculationBasis === 'calendar_days_30' ? '🏢 Company Official (₹12,073 in June)' :
-             salaryConfig.calculationBasis === 'monthly_scheduled_hours' ? '⚡ Standard 26-Day (₹12,097 in June)' :
-             salaryConfig.calculationBasis === 'calendar_days_full_ot' ? '⏱️ Calendar + Full OT (₹12,484 in June)' :
-             salaryConfig.calculationBasis === 'actual_hours' ? '📊 Logged Hours (₹12,097 in June)' : '💼 Fixed Monthly'}
+          <span className="text-[11px] text-[#D4AF37] font-medium">
+            🏢 Authoritative Company / Boss Payroll Engine (Calendar Days, Daily Rate ÷ 8 Shortfall, ₹75/hr Overtime)
           </span>
         </div>
-        <div className="flex flex-wrap gap-1.5 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => updateSalaryConfig({ calculationBasis: 'calendar_days_30', overtimeMultiplier: 1.0, overtimeThresholdMinutes: 60 })}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium transition-all ${
-              salaryConfig.calculationBasis === 'calendar_days_30'
-                ? 'bg-[#D4AF37] text-black font-semibold shadow-sm'
-                : 'bg-[#1E1E1E] text-[#9A9AA6] hover:text-white border border-[#2A2A2A]'
-            }`}
-          >
-            🏢 Official Disbursed (₹12,073)
-          </button>
-          <button
-            type="button"
-            onClick={() => updateSalaryConfig({ calculationBasis: 'monthly_scheduled_hours', overtimeMultiplier: 1.0, overtimeThresholdMinutes: 0 })}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium transition-all ${
-              salaryConfig.calculationBasis === 'monthly_scheduled_hours'
-                ? 'bg-[#D4AF37] text-black font-semibold shadow-sm'
-                : 'bg-[#1E1E1E] text-[#9A9AA6] hover:text-white border border-[#2A2A2A]'
-            }`}
-          >
-            ⚡ Standard 26-Day (₹12,097)
-          </button>
-          <button
-            type="button"
-            onClick={() => updateSalaryConfig({ calculationBasis: 'calendar_days_full_ot', overtimeMultiplier: 1.0, overtimeThresholdMinutes: 0 })}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium transition-all ${
-              salaryConfig.calculationBasis === 'calendar_days_full_ot'
-                ? 'bg-[#D4AF37] text-black font-semibold shadow-sm'
-                : 'bg-[#1E1E1E] text-[#9A9AA6] hover:text-white border border-[#2A2A2A]'
-            }`}
-          >
-            ⏱️ Full OT (₹12,484)
-          </button>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono text-neutral-400">
+            Base ₹15,000 · 8h/day · Sandwich Sunday Applied
+          </span>
         </div>
       </div>
 
@@ -167,7 +179,9 @@ export const DashboardView: React.FC = () => {
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <p className="text-[10.5px] sm:text-xs uppercase font-mono tracking-[0.2em] text-[#888892] font-bold">
-              Estimated Monthly Earnings · {selectedMonth}
+              {salaryCalculation.isRunningMonth 
+                ? `Earned to Date (${salaryCalculation.actualPresentDays} Days Worked) · ${selectedMonth}` 
+                : `Estimated Monthly Earnings · ${selectedMonth}`}
             </p>
             {isCurrentlyWorking && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9.5px] font-mono font-semibold bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 animate-pulse">
@@ -185,7 +199,15 @@ export const DashboardView: React.FC = () => {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-[#9A9AA6] mt-2 italic font-serif-display">
-            Base Salary: {formatCurrency(salaryConfig.monthlyBaseSalary)} | Projected Bonus: {formatCurrency(salaryConfig.attendanceBonusAmount)} {salaryCalculation.attendanceBonusApproved ? 'approved' : 'pending'}
+            {salaryCalculation.isRunningMonth ? (
+              <span>
+                Earned Base ({salaryCalculation.actualPresentDays} days): {formatCurrency(salaryCalculation.baseSalary)} | Overtime: +{formatCurrency(salaryCalculation.overtimePay)} | Projected Full Month: {formatCurrency(salaryCalculation.projectedMonthEndSalary || salaryConfig.monthlyBaseSalary)}
+              </span>
+            ) : (
+              <span>
+                Base Salary: {formatCurrency(salaryConfig.monthlyBaseSalary)} | Projected Bonus: {formatCurrency(salaryConfig.attendanceBonusAmount)} {salaryCalculation.attendanceBonusApproved ? 'approved' : 'pending'}
+              </span>
+            )}
           </p>
         </div>
 
@@ -200,11 +222,17 @@ export const DashboardView: React.FC = () => {
           <div className="bg-[#161616] border border-[#262626] p-4 rounded-xl w-full sm:w-44 shadow-lg">
             <p className="text-[10px] text-[#737373] uppercase tracking-widest mb-1 font-semibold">Attendance</p>
             <p className="text-2xl font-semibold text-white font-mono">
-              {salaryCalculation.actualPresentDays} <span className="text-sm text-[#737373]">/ {salaryConfig.attendanceBonusEligibleDays || 26}</span>
+              {salaryCalculation.actualPresentDays} <span className="text-sm text-[#737373]">/ {salaryCalculation.workingDays || 25}</span>
             </p>
           </div>
         </div>
       </div>
+
+      {/* 1.5 WEEKLY SUMMARY WIDGET (HIGH-LEVEL BREAKDOWN: HOURS WORKED & ESTIMATED EARNINGS) */}
+      <WeeklySummaryWidget />
+
+      {/* 1.6 WORK COMPLETED VS REMAINING PIE / DONUT DASHBOARDS (DAILY, WEEKLY, MONTHLY) */}
+      <WorkProgressPieWidget />
 
       {/* 2. WEEKLY EFFICIENCY & LIVE PULSE CARDS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
