@@ -91,29 +91,33 @@ export class WorkSessionEngine {
     const inTimestamps: { timeMs: number; iso: string }[] = [];
     const outTimestamps: { timeMs: number; iso: string }[] = [];
 
-    if (firstPunchInOverride) {
-      const ms = new Date(firstPunchInOverride).getTime();
-      if (!isNaN(ms)) inTimestamps.push({ timeMs: ms, iso: firstPunchInOverride });
-    }
-    if (lastPunchOutOverride) {
-      const ms = new Date(lastPunchOutOverride).getTime();
-      if (!isNaN(ms)) outTimestamps.push({ timeMs: ms, iso: lastPunchOutOverride });
-    }
-
     let isOpen = false;
     let openSession: WorkSession | undefined;
 
-    for (const session of workSessions) {
-      if (session.startTime) {
-        const ms = new Date(session.startTime).getTime();
-        if (!isNaN(ms)) inTimestamps.push({ timeMs: ms, iso: session.startTime });
+    if (workSessions && workSessions.length > 0) {
+      // Authoritative source: actual recorded work sessions
+      for (const session of workSessions) {
+        if (session.startTime) {
+          const ms = new Date(session.startTime).getTime();
+          if (!isNaN(ms)) inTimestamps.push({ timeMs: ms, iso: session.startTime });
+        }
+        if (session.endTime) {
+          const ms = new Date(session.endTime).getTime();
+          if (!isNaN(ms)) outTimestamps.push({ timeMs: ms, iso: session.endTime });
+        } else {
+          isOpen = true;
+          openSession = session;
+        }
       }
-      if (session.endTime) {
-        const ms = new Date(session.endTime).getTime();
-        if (!isNaN(ms)) outTimestamps.push({ timeMs: ms, iso: session.endTime });
-      } else {
-        isOpen = true;
-        openSession = session;
+    } else {
+      // Overrides ONLY apply when workSessions is absent or empty (e.g. legacy biometric summary records)
+      if (firstPunchInOverride) {
+        const ms = new Date(firstPunchInOverride).getTime();
+        if (!isNaN(ms)) inTimestamps.push({ timeMs: ms, iso: firstPunchInOverride });
+      }
+      if (lastPunchOutOverride) {
+        const ms = new Date(lastPunchOutOverride).getTime();
+        if (!isNaN(ms)) outTimestamps.push({ timeMs: ms, iso: lastPunchOutOverride });
       }
     }
 

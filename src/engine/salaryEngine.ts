@@ -453,15 +453,17 @@ export class SalaryEngine {
       effectiveAttendanceDays = attendanceDays.map(d => {
         if (d.date === todayLiveDetails.todayDate) {
           foundToday = true;
-          const activeSec = Math.max(d.totalActiveSeconds || 0, todayLiveDetails.liveActiveSeconds);
-          const otSec = Math.max(d.overtimeSeconds || 0, todayLiveDetails.liveOtSeconds);
+          const isHol = Boolean(DateEngine.getHolidayForDate(d.date, holidays));
+          const hasSessions = Array.isArray(d.workSessions) ? d.workSessions.length > 0 : Boolean(d.firstPunchIn);
+          const activeSec = hasSessions ? (todayLiveDetails.liveActiveSeconds > 0 ? todayLiveDetails.liveActiveSeconds : (d.totalActiveSeconds || 0)) : 0;
+          const otSec = hasSessions ? (todayLiveDetails.liveOtSeconds > 0 ? todayLiveDetails.liveOtSeconds : (d.overtimeSeconds || 0)) : 0;
           return {
             ...d,
             totalActiveSeconds: activeSec,
-            totalBreakSeconds: todayLiveDetails.liveBreakSeconds || d.totalBreakSeconds || 0,
+            totalBreakSeconds: hasSessions ? (todayLiveDetails.liveBreakSeconds || d.totalBreakSeconds || 0) : 0,
             overtimeSeconds: otSec,
-            creditedNormalSeconds: Math.min(activeSec, requiredDailySeconds),
-            status: activeSec >= (requiredDailySeconds * 0.5) ? ('PRESENT' as const) : (activeSec > 0 ? ('PARTIAL' as const) : d.status),
+            creditedNormalSeconds: isHol ? requiredDailySeconds : Math.min(activeSec, requiredDailySeconds),
+            status: isHol ? ('PAID_HOLIDAY' as const) : (activeSec >= (requiredDailySeconds * 0.5) ? ('PRESENT' as const) : (activeSec > 0 ? ('PARTIAL' as const) : d.status)),
           };
         }
         return d;

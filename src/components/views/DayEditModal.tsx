@@ -591,7 +591,11 @@ export const DayEditModal: React.FC<DayEditModalProps> = ({ dayDetails, onClose,
         ? 'WEEKLY_OFF'
         : 'ABSENT',
       totalActiveSeconds: livePreview.activeSeconds,
-      creditedNormalSeconds: status === 'PAID_HOLIDAY' || status === 'PAID_LEAVE' ? requiredSec : 0,
+      creditedNormalSeconds: (status === 'PAID_HOLIDAY' || status === 'PAID_LEAVE') 
+        ? requiredSec 
+        : (status === 'ABSENT' || status === 'UNPAID_LEAVE' || (status === 'WEEKLY_OFF' && livePreview.activeSeconds === 0))
+        ? 0
+        : Math.min(livePreview.activeSeconds, requiredSec),
       totalBreakSeconds: livePreview.breakSeconds,
       overtimeSeconds: livePreview.overtimeSeconds,
       firstPunchIn: firstIn,

@@ -42,6 +42,7 @@ import {
   PulseCalculatedSummary
 } from '../types';
 import { StorageService, DEFAULT_APP_SETTINGS } from '../persistence/storage';
+import { DateEngine } from '../engine/dateEngine';
 import { SalaryEngine } from '../engine/salaryEngine';
 import { PredictionEngine } from '../engine/predictionEngine';
 import { DayEngine } from '../engine/dayEngine';
@@ -544,13 +545,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const existing = attendanceDays.find(d => d.date === todayDate);
     if (existing) return existing;
 
+    const isHol = Boolean(DateEngine.getHolidayForDate(todayDate, holidays));
+    const isSun = DateEngine.isWeeklyOff(todayDate, schedule);
+    const requiredDailySeconds = Math.round((schedule.requiredActiveHoursPerDay || 8.0) * 3600);
+
     const newDay: AttendanceDay = {
       id: `att-${todayDate}`,
       date: todayDate,
-      status: 'PRESENT',
+      status: isHol ? 'PAID_HOLIDAY' : (isSun ? 'WEEKLY_OFF' : 'PRESENT'),
       workdayStatus: 'NOT_STARTED',
       totalActiveSeconds: 0,
-      creditedNormalSeconds: 0,
+      creditedNormalSeconds: isHol ? requiredDailySeconds : 0,
       totalBreakSeconds: 0,
       overtimeSeconds: 0,
       workSessions: [],
@@ -558,7 +563,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       source: 'DEVICE',
     };
     return newDay;
-  }, [attendanceDays, todayDate]);
+  }, [attendanceDays, todayDate, holidays, schedule]);
 
   // Derive live active work & break stats from timestamps (zero timer drift)
   const nowIso = useMemo(() => new Date(clockTick).toISOString(), [clockTick]);
@@ -1500,9 +1505,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } else {
       const updatedWorkSessions = todayAttendance.workSessions.filter(ws => ws.id !== sessionId);
       const activeSec = WorkSessionEngine.calculateTotalActiveSeconds(updatedWorkSessions);
+      const requiredSec = Math.round((schedule.requiredActiveHoursPerDay || 8.0) * 3600);
+      const isHol = Boolean(DateEngine.getHolidayForDate(todayDate, holidays));
+      const isSun = DateEngine.isWeeklyOff(todayDate, schedule);
+
+      let firstPunchIn: string | undefined = undefined;
+      let lastPunchOut: string | undefined = undefined;
+      let workdayStatus: WorkdayStatus = 'NOT_STARTED';
+
+      if (updatedWorkSessions.length > 0) {
+        const sorted = [...updatedWorkSessions].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+        firstPunchIn = sorted[0].startTime;
+        const hasOpen = sorted.some(s => !s.endTime);
+        lastPunchOut = hasOpen ? undefined : sorted[sorted.length - 1].endTime;
+        workdayStatus = hasOpen ? 'WORKING' : 'COMPLETED';
+      }
+
       const updatedDay: AttendanceDay = {
         ...todayAttendance,
+        status: isHol ? 'PAID_HOLIDAY' : (isSun ? 'WEEKLY_OFF' : (activeSec >= (requiredSec * 0.5) ? 'PRESENT' : (activeSec > 0 ? 'PARTIAL' : 'PRESENT'))),
+        workdayStatus,
         totalActiveSeconds: activeSec,
+        overtimeSeconds: Math.max(0, activeSec - requiredSec),
+        creditedNormalSeconds: isHol ? requiredSec : Math.min(activeSec, requiredSec),
+        firstPunchIn,
+        lastPunchOut,
         workSessions: updatedWorkSessions,
         updatedAt: new Date().toISOString(),
       };

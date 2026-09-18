@@ -58,8 +58,8 @@ export class DayEngine {
 
     return {
       ...result,
-      firstPunchIn: result.firstPunchIn || firstPunchInOverride,
-      lastPunchOut: result.lastPunchOut || lastPunchOutOverride,
+      firstPunchIn: result.firstPunchIn,
+      lastPunchOut: result.lastPunchOut,
     };
   }
 
@@ -288,20 +288,7 @@ export class DayEngine {
 
     const isWeeklyOff = DateEngine.isWeeklyOff(dateStr, schedule);
     const holidayInfo = DateEngine.getHolidayForDate(dateStr, holidays);
-    
-    // Check if the employee explicitly worked on this holiday as a normal working day
-    const hasExplicitWorkOrPresent = Boolean(
-      dayRecord && (
-        dayRecord.status === 'PRESENT' ||
-        dayRecord.status === 'PARTIAL' ||
-        dayRecord.overrideHoliday === true ||
-        (dayRecord.status as any) === 'COMPLETED' ||
-        (dayRecord.workSessions && dayRecord.workSessions.length > 0 && dayRecord.status !== 'PAID_HOLIDAY' && dayRecord.status !== 'UNPAID_LEAVE' && dayRecord.status !== 'ABSENT')
-      )
-    );
-
-    const isHolidayWorked = Boolean(holidayInfo && hasExplicitWorkOrPresent);
-    const isHoliday = Boolean(holidayInfo && !hasExplicitWorkOrPresent);
+    const isHoliday = Boolean(holidayInfo);
 
     const requiredDailyHours = schedule.requiredActiveHoursPerDay || 8.0;
     const requiredNormalSeconds = isWeeklyOff || isHoliday ? 0 : Math.round(requiredDailyHours * 3600);
@@ -341,9 +328,15 @@ export class DayEngine {
         actualActiveSeconds = (dateStr === '2026-08-01' && dayRecord.totalActiveSeconds === 13500)
           ? 13500
           : workRes.totalActiveSeconds;
-        firstPunchIn = workRes.firstPunchIn || dayRecord.firstPunchIn;
-        lastPunchOut = workRes.lastPunchOut || dayRecord.lastPunchOut;
-      } else if (dayRecord.firstPunchIn && dayRecord.lastPunchOut) {
+        firstPunchIn = workRes.firstPunchIn;
+        lastPunchOut = workRes.lastPunchOut;
+      } else if (dayRecord.workSessions && dayRecord.workSessions.length === 0) {
+        // Explicitly empty sessions array (e.g. punches were deleted, or holiday without work)
+        actualActiveSeconds = 0;
+        firstPunchIn = undefined;
+        lastPunchOut = undefined;
+      } else if (dayRecord.firstPunchIn && dayRecord.lastPunchOut && dayRecord.workSessions === undefined) {
+        // Legacy biometric summary records without workSession array
         firstPunchIn = dayRecord.firstPunchIn;
         lastPunchOut = dayRecord.lastPunchOut;
         const workRes = this.calculateDayWorkSeconds(
@@ -359,7 +352,9 @@ export class DayEngine {
           ? 13500
           : workRes.totalActiveSeconds;
       } else {
-        actualActiveSeconds = dayRecord.totalActiveSeconds || 0;
+        actualActiveSeconds = 0;
+        firstPunchIn = undefined;
+        lastPunchOut = undefined;
       }
 
       if (dayRecord.breakSessions && dayRecord.breakSessions.length > 0) {
@@ -372,6 +367,8 @@ export class DayEngine {
       creditedNormalSeconds = Math.min(actualActiveSeconds, requiredNormalSeconds);
       overtimeSeconds = Math.max(0, actualActiveSeconds - requiredNormalSeconds);
     }
+
+    const isHolidayWorked = Boolean(holidayInfo && actualActiveSeconds > 0);
 
     if (isHoliday && holidayInfo?.type === 'paid') {
       creditedNormalSeconds = Math.round((holidayInfo.creditedHours || config.defaultPaidHolidayCreditedHours || 8.0) * 3600);
@@ -488,6 +485,12 @@ export class DayEngine {
       } else {
         holidayCreditEarned = rateDerivation.perDayRate;
       }
+
+      // If employee worked on this paid holiday, calculate work-based earnings:
+      if (actualActiveSeconds > 0) {
+        const actualMinutes = actualActiveSeconds / 60;
+        baseSalaryEarned = SalaryEngine.calculateDailyEarning(actualMinutes, rateDerivation.dailyRate);
+      }
     } else if (status === 'PAID_HOLIDAY') {
       if (dayRecord?.customHolidayAmount !== undefined && dayRecord.customHolidayAmount >= 0) {
         holidayCreditEarned = dayRecord.customHolidayAmount;
@@ -495,6 +498,12 @@ export class DayEngine {
         holidayCreditEarned = config.defaultHolidayAmount;
       } else {
         holidayCreditEarned = rateDerivation.perDayRate;
+      }
+
+      // If employee worked on this paid holiday, calculate work-based earnings:
+      if (actualActiveSeconds > 0) {
+        const actualMinutes = actualActiveSeconds / 60;
+        baseSalaryEarned = SalaryEngine.calculateDailyEarning(actualMinutes, rateDerivation.dailyRate);
       }
     } else if (isWeeklyOff) {
       if (config.weeklyOffWorkRule === 'always_overtime') {
@@ -768,29 +777,29 @@ export class DayEngine {
         needsReviewCount++;
       }
 
-      // Attendance tallying rule:
-      // Half day attendance: worked > 1 hour (3600s) and < 4 hours (14400s) -> 0.5 attendance
-      // Full day attendance: worked >= 4 hours (14400s) or status PRESENT/COMPLETED -> 1.0 attendance
-      if (details.actualActiveSeconds > 3600 && details.actualActiveSeconds < 14400) {
-        presentDaysCount += 0.5;
-        partialDaysCount++;
-      } else if (details.actualActiveSeconds >= 14400 || details.status === 'PRESENT' || details.status === 'COMPLETED') {
-        presentDaysCount += 1.0;
-      } else {
-        switch (details.status) {
-          case 'PARTIAL':
-          case 'WORKING':
-            partialDaysCount++;
-            break;
-          case 'ABSENT':
-            absentDaysCount++;
-            break;
-          case 'PAID_LEAVE':
-            paidLeaveCount++;
-            break;
-          case 'UNPAID_LEAVE':
-            unpaidLeaveCount++;
-            break;
+      // Attendance tallying rule (only for scheduled working days, not holidays or weekly offs):
+      if (!details.isHoliday && !details.isWeeklyOff) {
+        if (details.actualActiveSeconds > 3600 && details.actualActiveSeconds < 14400) {
+          presentDaysCount += 0.5;
+          partialDaysCount++;
+        } else if (details.actualActiveSeconds >= 14400 || details.status === 'PRESENT' || details.status === 'COMPLETED') {
+          presentDaysCount += 1.0;
+        } else {
+          switch (details.status) {
+            case 'PARTIAL':
+            case 'WORKING':
+              partialDaysCount++;
+              break;
+            case 'ABSENT':
+              absentDaysCount++;
+              break;
+            case 'PAID_LEAVE':
+              paidLeaveCount++;
+              break;
+            case 'UNPAID_LEAVE':
+              unpaidLeaveCount++;
+              break;
+          }
         }
       }
 
@@ -801,7 +810,7 @@ export class DayEngine {
         holidayCreditsTotal += details.holidayCreditEarned;
       } else if (details.isToday) {
         actualWorkSeconds += details.actualActiveSeconds;
-        liveEarnedToday = todayLiveDetails ? todayLiveDetails.liveEarned : details.totalDailyEarned;
+        liveEarnedToday = todayLiveDetails ? todayLiveDetails.liveEarned : details.baseSalaryEarned;
         holidayCreditsTotal += details.holidayCreditEarned;
       } else if (details.isFuture) {
         projectedFutureEarnings += details.projectedDailyEarned;
