@@ -98,7 +98,7 @@ export const AnalyticsTimeframeSelector: React.FC<AnalyticsTimeframeSelectorProp
             <input
               type="date"
               id="analytics-custom-start-date"
-              value={customStartDate || '2026-08-01'}
+              value={customStartDate || ''}
               onChange={(e) => onCustomStartChange && onCustomStartChange(e.target.value)}
               className="bg-[#121824] border border-[#1e293b] rounded px-2.5 py-1 text-slate-200 font-mono text-xs focus:outline-none focus:border-emerald-500"
             />
@@ -108,7 +108,7 @@ export const AnalyticsTimeframeSelector: React.FC<AnalyticsTimeframeSelectorProp
             <input
               type="date"
               id="analytics-custom-end-date"
-              value={customEndDate || '2026-08-15'}
+              value={customEndDate || ''}
               onChange={(e) => onCustomEndChange && onCustomEndChange(e.target.value)}
               className="bg-[#121824] border border-[#1e293b] rounded px-2.5 py-1 text-slate-200 font-mono text-xs focus:outline-none focus:border-emerald-500"
             />

@@ -31,6 +31,7 @@ import { useApp } from '../../context/AppContext';
 import { Badge } from '../common/Badge';
 import { DayCalculationDetails } from '../../types';
 import { WorkSessionEngine } from '../../engine/workSessionEngine';
+import { SalaryEngine } from '../../engine/salaryEngine';
 import { DayDetailsDrawer } from './DayDetailsDrawer';
 
 type ViewMode = 'grid' | 'agenda';
@@ -46,6 +47,8 @@ export const CalendarView: React.FC = () => {
     todayDate,
     isCurrentlyWorking,
     isOnBreak,
+    salaryConfig,
+    rateDerivation,
   } = useApp();
 
   const [inspectDay, setInspectDay] = useState<DayCalculationDetails | null>(null);
@@ -133,6 +136,61 @@ export const CalendarView: React.FC = () => {
 
   const isCurrentActiveMonth = todayDate.startsWith(selectedMonth);
 
+  // Authoritative daily rate derived strictly from the month's total calendar days:
+  // e.g. 30-day month = ₹15,000 / 30 = ₹500.00/day
+  //      31-day month = ₹15,000 / 31 = ₹483.87/day
+  const monthDailyRate = useMemo(() => {
+    const monthlyBase = salaryConfig?.monthlyBaseSalary || 15000;
+    return totalDaysInMonth > 0 ? monthlyBase / totalDaysInMonth : 500;
+  }, [salaryConfig?.monthlyBaseSalary, totalDaysInMonth]);
+
+  /**
+   * Authoritative Proportional Daily Earning Calculation for Calendar view:
+   * Uses SalaryEngine.calculateDailyEarning(actualWorkMinutes, dailyRate)
+   * Replaces any hardcoded daily salary logic or simple 'present' checks with the proportional calculation engine,
+   * ensuring it uses the accurate daily rate derived from the month's total days.
+   * Full 8h = 480m -> ₹500 (in a 30-day month), partial days (e.g. 359m) -> ₹373.96, plus OT and holiday credits.
+   */
+  const calculateCalendarDayEarned = (day: DayCalculationDetails | null): number => {
+    if (!day) return 0;
+
+    // Future projections
+    if (day.isFuture) {
+      return day.projectedDailyEarned;
+    }
+
+    // Unpaid absences or unworked unpaid leaves earn ₹0 (unless paid holiday)
+    if ((day.status === 'ABSENT' || day.status === 'UNPAID_LEAVE') && day.actualActiveSeconds === 0) {
+      return day.holidayCreditEarned || 0;
+    }
+
+    // Unworked regular weekly off days earn ₹0 (unless holiday)
+    if (day.isWeeklyOff && day.actualActiveSeconds === 0 && !day.isHoliday) {
+      return 0;
+    }
+
+    // Paid leave receives full daily rate
+    if (day.status === 'PAID_LEAVE') {
+      return monthDailyRate;
+    }
+
+    // Proportional calculation for all worked days:
+    // No simple 'PRESENT' checks or flat full-day assumptions.
+    // Formula: actualWorkMinutes * (dailyRate / 480)
+    const actualMinutes = day.actualActiveSeconds / 60;
+    const baseProportionalEarned = SalaryEngine.calculateDailyEarning(actualMinutes, monthDailyRate);
+
+    // Overtime pay only if worked on weekly off under always_overtime rule
+    const isWeeklyOffWorked = day.isWeeklyOff && day.actualActiveSeconds > 0;
+    const otRate = rateDerivation?.overtimeHourlyRate || 75;
+    const otEarned = isWeeklyOffWorked ? (day.actualActiveSeconds / 3600) * otRate : 0;
+
+    // Paid holiday credit if applicable
+    const holidayEarned = day.holidayCreditEarned || (day.isHoliday && day.holidayInfo?.type !== 'unpaid' ? monthDailyRate : 0);
+
+    return baseProportionalEarned + otEarned + holidayEarned;
+  };
+
   return (
     <div id="calendar-view" className="space-y-5 pb-16 animate-fadeIn max-w-7xl mx-auto px-2 sm:px-4">
       
@@ -150,7 +208,7 @@ export const CalendarView: React.FC = () => {
             </div>
           </div>
           <p className="text-xs text-[#A3A3A3]">
-            {monthName} • Standard 26-day basis • ₹72.12/hr live derivation
+            {monthName} • {totalDaysInMonth} Days • ₹{monthDailyRate.toFixed(2)}/day (₹{(monthDailyRate / 8).toFixed(2)}/hr)
           </p>
         </div>
 
@@ -338,7 +396,7 @@ export const CalendarView: React.FC = () => {
                 </span>
               ) : (
                 <span className="text-[#737373] text-[11px]">
-                  {WorkSessionEngine.formatSecondsToHMS(monthlyRunningSummary.remainingNormalSeconds)} remaining to 208h target
+                  {WorkSessionEngine.formatSecondsToHMS(monthlyRunningSummary.remainingNormalSeconds)} remaining to {(monthlyRunningSummary.requiredNormalSeconds / 3600).toFixed(0)}h target
                 </span>
               )}
             </div>
@@ -598,20 +656,28 @@ export const CalendarView: React.FC = () => {
                   </div>
 
                   {/* Row 3: Daily Earning Amount */}
-                  <div className="pt-0.5 sm:pt-1 border-t border-[#222222] w-full flex items-center justify-between text-[9px] sm:text-[10px] font-mono">
-                    <span className="text-[#666666] hidden sm:inline">{day.isFuture ? 'Exp' : 'Earn'}</span>
-                    <span className={`font-semibold ml-auto sm:ml-0 ${
-                      isWeeklyOff && !day.isHoliday && day.totalDailyEarned === 0
-                        ? 'text-[#555555]'
-                        : isToday
-                        ? 'text-[#10B981]'
-                        : 'text-[#D4AF37]'
-                    }`}>
-                      {isWeeklyOff && day.totalDailyEarned === 0
-                        ? '--'
-                        : `₹${(day.isFuture ? day.projectedDailyEarned : day.totalDailyEarned).toFixed(0)}`}
-                    </span>
-                  </div>
+                  {(() => {
+                    const dayEarned = calculateCalendarDayEarned(day);
+                    return (
+                      <div 
+                        className="pt-0.5 sm:pt-1 border-t border-[#222222] w-full flex items-center justify-between text-[9px] sm:text-[10px] font-mono"
+                        title={`Daily Earned: ₹${dayEarned.toFixed(2)} (${(day.actualActiveSeconds / 60).toFixed(0)} mins @ ₹${monthDailyRate.toFixed(2)}/day)`}
+                      >
+                        <span className="text-[#666666] hidden sm:inline">{day.isFuture ? 'Exp' : 'Earn'}</span>
+                        <span className={`font-semibold ml-auto sm:ml-0 ${
+                          isWeeklyOff && !day.isHoliday && dayEarned === 0
+                            ? 'text-[#555555]'
+                            : isToday
+                            ? 'text-[#10B981]'
+                            : 'text-[#D4AF37]'
+                        }`}>
+                          {isWeeklyOff && dayEarned === 0
+                            ? '--'
+                            : `₹${dayEarned.toFixed(dayEarned > 0 && dayEarned % 1 !== 0 ? 2 : 0)}`}
+                        </span>
+                      </div>
+                    );
+                  })()}
 
                 </button>
               );
@@ -698,7 +764,7 @@ export const CalendarView: React.FC = () => {
                     <div className="text-right pl-3 border-l border-[#292929]">
                       <span className="text-[#737373] block text-[10px]">{day.isFuture ? 'Projected' : 'Earned'}</span>
                       <span className="text-sm font-bold text-[#D4AF37]">
-                        ₹{(day.isFuture ? day.projectedDailyEarned : day.totalDailyEarned).toFixed(2)}
+                        ₹{calculateCalendarDayEarned(day).toFixed(2)}
                       </span>
                     </div>
 
@@ -743,7 +809,7 @@ export const CalendarView: React.FC = () => {
                   </span>
                 )}
                 <span className="text-[#737373] mx-2">•</span>
-                Earned: <strong className="text-[#D4AF37]">₹{activeSelectedDay.totalDailyEarned.toFixed(2)}</strong>
+                Earned: <strong className="text-[#D4AF37]">₹{calculateCalendarDayEarned(activeSelectedDay).toFixed(2)}</strong>
               </p>
             </div>
           </div>

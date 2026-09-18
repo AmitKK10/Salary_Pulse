@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   AnalyticsTimeframe,
@@ -6,6 +6,7 @@ import {
   DailyWorkHourPoint,
 } from '../../types';
 import { AnalyticsEngine } from '../../engine/analyticsEngine';
+import { DateEngine } from '../../engine/dateEngine';
 
 // Components
 import { AnalyticsTimeframeSelector } from '../analytics/AnalyticsTimeframeSelector';
@@ -45,29 +46,63 @@ export const AnalyticsView: React.FC = () => {
     bonusApprovalState,
     selectedMonth,
     currentSalaryReconciliation,
+    todayDate,
   } = useApp();
+
+  // Active reference date tied to the authoritative selectedMonth
+  const activeRefDate = useMemo(() => {
+    if (todayDate && todayDate.startsWith(selectedMonth)) {
+      return todayDate;
+    }
+    const daysInMonth = DateEngine.getDaysInMonth(selectedMonth);
+    return `${selectedMonth}-${String(daysInMonth).padStart(2, '0')}`;
+  }, [todayDate, selectedMonth]);
 
   // State for timeframe, active tab, modal and selected day
   const [timeframe, setTimeframe] = useState<AnalyticsTimeframe>('this_month');
-  const [customStartDate, setCustomStartDate] = useState('2026-08-01');
-  const [customEndDate, setCustomEndDate] = useState('2026-08-15');
+  const [customStartDate, setCustomStartDate] = useState(() => `${selectedMonth}-01`);
+  const [customEndDate, setCustomEndDate] = useState(() => {
+    if (todayDate && todayDate.startsWith(selectedMonth)) {
+      return todayDate;
+    }
+    return `${selectedMonth}-15`;
+  });
   const [activeTab, setActiveTab] = useState<AnalyticsSectionTab>('overview');
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [selectedDayPoint, setSelectedDayPoint] = useState<DailyWorkHourPoint | null>(null);
 
-  // Timeframe calculation
+  // Sync custom date defaults when selectedMonth or todayDate updates
+  useEffect(() => {
+    setCustomStartDate(`${selectedMonth}-01`);
+    if (todayDate && todayDate.startsWith(selectedMonth)) {
+      setCustomEndDate(todayDate);
+    } else {
+      const daysInMonth = DateEngine.getDaysInMonth(selectedMonth);
+      setCustomEndDate(`${selectedMonth}-${String(daysInMonth).padStart(2, '0')}`);
+    }
+  }, [selectedMonth, todayDate]);
+
+  // Timeframe calculation dynamically derived from selectedMonth
   const timeframeLabel = useMemo(() => {
+    const monthName = DateEngine.getMonthName(selectedMonth);
+    const [selYear] = selectedMonth.split('-');
     switch (timeframe) {
       case 'today':
-        return 'Today (15-Aug-2026)';
-      case 'this_week':
-        return 'Current Week (Aug 10 - Aug 15)';
+        return `Today (${activeRefDate})`;
+      case 'this_week': {
+        const range = AnalyticsEngine.getDateRangeForTimeframe('this_week', activeRefDate);
+        return `Current Week (${range.startDate} - ${range.endDate})`;
+      }
       case 'this_month':
-        return 'Running Month (August 2026)';
+        return `Running Month (${monthName} ${selYear})`;
       case 'this_year':
-        return 'Calendar Year 2026';
-      case 'financial_year':
-        return 'FY 2026–27 (April 2026 - March 2027)';
+        return `Calendar Year ${selYear}`;
+      case 'financial_year': {
+        const y = parseInt(selYear, 10);
+        const m = parseInt(selectedMonth.split('-')[1], 10);
+        const fyStart = m >= 4 ? y : y - 1;
+        return `FY ${fyStart}–${String(fyStart + 1).slice(-2)} (April ${fyStart} - March ${fyStart + 1})`;
+      }
       case 'lifetime':
         return 'Career Lifetime (Jan 2026 - Present)';
       case 'custom_range':
@@ -75,7 +110,7 @@ export const AnalyticsView: React.FC = () => {
       default:
         return 'Current Period';
     }
-  }, [timeframe, customStartDate, customEndDate]);
+  }, [timeframe, selectedMonth, activeRefDate, customStartDate, customEndDate]);
 
   // Derived Analytics Datasets using AnalyticsEngine
   const kpis = useMemo(() => {
@@ -87,9 +122,22 @@ export const AnalyticsView: React.FC = () => {
       holidays,
       salaryReconciliationRecords,
       customStartDate,
-      customEndDate
+      customEndDate,
+      activeRefDate,
+      salaryCalculation
     );
-  }, [timeframe, attendanceDays, salaryConfig, schedule, holidays, salaryReconciliationRecords, customStartDate, customEndDate]);
+  }, [
+    timeframe,
+    attendanceDays,
+    salaryConfig,
+    schedule,
+    holidays,
+    salaryReconciliationRecords,
+    customStartDate,
+    customEndDate,
+    activeRefDate,
+    salaryCalculation,
+  ]);
 
   const growthComparison = useMemo(() => {
     return AnalyticsEngine.generateMonthlySalaryGrowthData(
@@ -97,9 +145,10 @@ export const AnalyticsView: React.FC = () => {
       attendanceDays,
       salaryConfig,
       schedule,
-      holidays
+      holidays,
+      selectedMonth
     );
-  }, [salaryReconciliationRecords, attendanceDays, salaryConfig, schedule, holidays]);
+  }, [salaryReconciliationRecords, attendanceDays, salaryConfig, schedule, holidays, selectedMonth]);
 
   const salaryTrend = useMemo(() => {
     return AnalyticsEngine.calculateSalaryTrend(growthComparison, false);
@@ -111,7 +160,7 @@ export const AnalyticsView: React.FC = () => {
 
   const dailyWorkPoints = useMemo(() => {
     return AnalyticsEngine.getDailyWorkingHoursData(
-      selectedMonth || '2026-08',
+      selectedMonth,
       attendanceDays,
       schedule,
       salaryConfig,
@@ -121,7 +170,7 @@ export const AnalyticsView: React.FC = () => {
 
   const monthlyProgress = useMemo(() => {
     return AnalyticsEngine.getMonthlyNormalHourProgress(
-      selectedMonth || '2026-08',
+      selectedMonth,
       attendanceDays,
       salaryConfig,
       schedule,
@@ -136,9 +185,10 @@ export const AnalyticsView: React.FC = () => {
       salaryConfig,
       schedule,
       holidays,
-      salaryReconciliationRecords
+      salaryReconciliationRecords,
+      selectedMonth
     );
-  }, [timeframe, attendanceDays, salaryConfig, schedule, holidays, salaryReconciliationRecords]);
+  }, [timeframe, attendanceDays, salaryConfig, schedule, holidays, salaryReconciliationRecords, selectedMonth]);
 
   const attendanceData = useMemo(() => {
     return AnalyticsEngine.getAttendanceAnalytics(
@@ -147,13 +197,14 @@ export const AnalyticsView: React.FC = () => {
       schedule,
       holidays,
       customStartDate,
-      customEndDate
+      customEndDate,
+      activeRefDate
     );
-  }, [timeframe, attendanceDays, schedule, holidays, customStartDate, customEndDate]);
+  }, [timeframe, attendanceDays, schedule, holidays, customStartDate, customEndDate, activeRefDate]);
 
   const attendanceBonusData = useMemo(() => {
     return AnalyticsEngine.getAttendanceBonusAnalytics(
-      selectedMonth || '2026-08',
+      selectedMonth,
       attendanceDays,
       salaryConfig,
       bonusApprovalState,
@@ -163,7 +214,7 @@ export const AnalyticsView: React.FC = () => {
 
   const absenceImpact = useMemo(() => {
     return AnalyticsEngine.getAbsenceImpact(
-      selectedMonth || '2026-08',
+      selectedMonth,
       attendanceDays,
       salaryConfig,
       schedule,
@@ -181,16 +232,17 @@ export const AnalyticsView: React.FC = () => {
 
   const monthEndPace = useMemo(() => {
     return AnalyticsEngine.getMonthEndPace(
-      selectedMonth || '2026-08',
+      selectedMonth,
       attendanceDays,
       schedule,
-      holidays
+      holidays,
+      activeRefDate
     );
-  }, [selectedMonth, attendanceDays, schedule, holidays]);
+  }, [selectedMonth, attendanceDays, schedule, holidays, activeRefDate]);
 
   const dailyTrajectory = useMemo(() => {
     return AnalyticsEngine.getDailyEarningTrajectory(
-      selectedMonth || '2026-08',
+      selectedMonth,
       attendanceDays,
       salaryConfig,
       schedule,
@@ -200,7 +252,7 @@ export const AnalyticsView: React.FC = () => {
 
   const timeMoneyConversion = useMemo(() => {
     return AnalyticsEngine.getTimeMoneyConversion(
-      selectedMonth || '2026-08',
+      selectedMonth,
       salaryConfig,
       schedule,
       holidays
@@ -209,7 +261,7 @@ export const AnalyticsView: React.FC = () => {
 
   const { breakStats: breakAnalytics, punctuality: punctualityAnalytics } = useMemo(() => {
     return AnalyticsEngine.getBreakAndPunctualityAnalytics(
-      selectedMonth || '2026-08',
+      selectedMonth,
       attendanceDays,
       schedule
     );
@@ -229,7 +281,7 @@ export const AnalyticsView: React.FC = () => {
 
   const monthlySummary = useMemo(() => {
     return AnalyticsEngine.generateDeterministicMonthlySummary(
-      selectedMonth || '2026-08',
+      selectedMonth,
       salaryCalculation,
       currentSalaryReconciliation
     );

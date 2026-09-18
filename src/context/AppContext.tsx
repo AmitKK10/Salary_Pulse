@@ -57,6 +57,7 @@ import { AnalyticsEngine } from '../engine/analyticsEngine';
 import { NotificationEngine } from '../engine/notificationEngine';
 import { NotificationService } from '../services/notificationService';
 import { formatTimeDisplay, formatDurationHM } from '../utils/formatters';
+import { useSecondTick } from '../hooks/useLiveClock';
 import { runStep9Tests, Step9TestCaseResult } from '../engine/step9TestCases';
 import { runStep11ComprehensiveQA, Step11TestCaseResult } from '../engine/step11VerificationRunner';
 import { 
@@ -227,6 +228,9 @@ interface AppContextType {
   step11TestResults: Step11TestCaseResult[];
   rerunStep11Tests: () => Promise<Step11TestCaseResult[]>;
   
+  // Clock and Live Ticking
+  clockTick: number;
+
   // Compatibility Aliases for Views
   currentLiveSeconds: number;
   currentDayAttendance: AttendanceDay | undefined;
@@ -280,7 +284,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {
       // ignore
     }
-    return '2026-09-05';
+    return '2026-09-16';
   });
 
   const setTodayDate = (date: string) => {
@@ -454,15 +458,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return StorageService.getSalaryReconciliationRecords();
   });
 
-  // Real-time ticking state: increments a tick every 1000ms so that Date.now() timestamp comparisons update smoothly
-  const [clockTick, setClockTick] = useState<number>(Date.now());
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setClockTick(Date.now());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Real-time ticking state: authoritative 1000ms timestamp tick (drift-free, single shared interval)
+  const clockTick = useSecondTick();
 
   // Setters with persistent storage sync
   const setActiveTab = (tab: NavigationTab) => {
@@ -571,6 +568,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return ((schedule?.defaultLunchDurationMinutes || lunchRule?.durationMinutes || 60) * 60);
   }, [schedule]);
 
+  const hasOpenWorkSession = todayAttendance.workSessions.some(s => !s.endTime);
+  const effectiveLastPunchOut = hasOpenWorkSession ? undefined : todayAttendance.lastPunchOut;
+
   const activeWorkResult = useMemo(() => {
     return WorkSessionEngine.calculateDayActiveSeconds(
       todayAttendance.workSessions, 
@@ -580,9 +580,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       configuredLunchSeconds,
       todayAttendance.breakSessions,
       todayAttendance.firstPunchIn,
-      todayAttendance.lastPunchOut
+      effectiveLastPunchOut
     );
-  }, [todayAttendance.workSessions, todayAttendance.breakSessions, todayAttendance.firstPunchIn, todayAttendance.lastPunchOut, todayAttendance.date, nowIso, configuredLunchSeconds]);
+  }, [todayAttendance.workSessions, todayAttendance.breakSessions, todayAttendance.firstPunchIn, effectiveLastPunchOut, todayAttendance.date, nowIso, configuredLunchSeconds]);
 
   const breakResult = useMemo(() => {
     return WorkSessionEngine.calculateDayBreakSeconds(todayAttendance.breakSessions, schedule, nowIso);
@@ -633,12 +633,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   }, [attendanceDays, selectedMonth, todayDate, todayLiveActiveSeconds, schedule, holidays, salaryConfig]);
 
-  // Live Realtime Accrual Ticker (Yield) derived from authoritative SalaryEngine rates
+  // Live Realtime Accrual Ticker (Yield) derived from authoritative SalaryEngine rates (full unrounded precision)
   const todayLiveEarned = useMemo(() => {
     const normalSec = liveOtInfo.normalSecondsToday;
     const otSec = liveOtInfo.overtimeSecondsToday;
     const earned = (normalSec * rateDerivation.perSecondRate) + (otSec * rateDerivation.overtimeSecondRate);
-    return Number(earned.toFixed(2));
+    return earned;
   }, [liveOtInfo, rateDerivation]);
 
   // Dynamic Completion Time Estimation (Exact time to finish shift target based on remaining active work)
@@ -814,6 +814,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...todayAttendance,
       status: 'PRESENT',
       workdayStatus: 'WORKING',
+      finishedAt: undefined,
+      lastPunchOut: undefined,
       firstPunchIn: firstPunch,
       workSessions: updatedWorkSessions,
       breakSessions: updatedBreakSessions,
@@ -1059,6 +1061,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...todayAttendance,
       status: 'PRESENT',
       workdayStatus: 'WORKING',
+      finishedAt: undefined,
+      lastPunchOut: undefined,
       totalBreakSeconds: breakSec,
       workSessions: updatedWorkSessions,
       breakSessions: updatedBreakSessions,
@@ -2819,6 +2823,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addManualBreakSession,
         deleteSession,
         auditLogs,
+        clockTick,
 
         // Compatibility Aliases
         isWorking: isCurrentlyWorking,

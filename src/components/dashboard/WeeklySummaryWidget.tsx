@@ -22,7 +22,8 @@ import { WorkSessionEngine } from '../../engine/workSessionEngine';
 import { 
   formatCurrency, 
   formatDurationHM, 
-  formatSecondsToDetailed 
+  formatSecondsToDetailed,
+  formatSecondsToHHMMSS,
 } from '../../utils/formatters';
 import { AttendanceDay } from '../../types';
 
@@ -119,6 +120,8 @@ export const WeeklySummaryWidget: React.FC = () => {
     totalWeeklyEarnings,
     totalWeeklyRegularPay,
     totalWeeklyOtPay,
+    totalWeeklyTargetSeconds,
+    totalWeeklyRemainingSeconds,
     daysWorkedCount,
     scheduledDaysCount,
     weeklyTargetHours,
@@ -235,6 +238,8 @@ export const WeeklySummaryWidget: React.FC = () => {
     });
 
     const targetWeeklyHours = scheduledDays * requiredDailyHours;
+    const targetWeeklySeconds = Math.round(targetWeeklyHours * 3600);
+    const remainingWeeklySeconds = Math.max(0, targetWeeklySeconds - totalActiveSec);
     const weeklyProgress = targetWeeklyHours > 0
       ? Math.min(100, Math.round(((totalActiveSec / 3600) / targetWeeklyHours) * 100))
       : 0;
@@ -248,6 +253,8 @@ export const WeeklySummaryWidget: React.FC = () => {
       totalWeeklyHours: totalActiveSec / 3600,
       totalWeeklyNormalSeconds: totalNormalSec,
       totalWeeklyOtSeconds: totalOtSec,
+      totalWeeklyTargetSeconds: targetWeeklySeconds,
+      totalWeeklyRemainingSeconds: remainingWeeklySeconds,
       totalWeeklyEarnings: Number(totalEarnings.toFixed(2)),
       totalWeeklyRegularPay: weeklyRegularPay,
       totalWeeklyOtPay: weeklyOtPay,
@@ -352,7 +359,7 @@ export const WeeklySummaryWidget: React.FC = () => {
 
           <div className="my-2.5">
             <p className="text-2xl sm:text-3xl font-light font-mono text-white tracking-tight">
-              {formatDurationHM(totalWeeklyActiveSeconds)}
+              {formatSecondsToHHMMSS(totalWeeklyActiveSeconds)}
             </p>
             <div className="w-full bg-[#202028] h-1.5 rounded-full overflow-hidden mt-2">
               <div
@@ -363,9 +370,9 @@ export const WeeklySummaryWidget: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between text-[11px] font-mono text-[#A3A3A3] pt-1 border-t border-[#20202A]">
-            <span>Target: {weeklyTargetHours}h</span>
+            <span>Target: {formatSecondsToHHMMSS(totalWeeklyTargetSeconds)}</span>
             <span className={weeklyProgressPercent >= 100 ? 'text-[#10B981] font-bold' : 'text-[#D4AF37]'}>
-              {weeklyProgressPercent}% completed
+              Remaining: {formatSecondsToHHMMSS(totalWeeklyRemainingSeconds)}
             </span>
           </div>
         </div>
@@ -417,7 +424,7 @@ export const WeeklySummaryWidget: React.FC = () => {
 
           <div className="my-2.5">
             <p className="text-2xl sm:text-3xl font-light font-mono text-emerald-400 tracking-tight">
-              {formatDurationHM(totalWeeklyOtSeconds)}
+              {formatSecondsToHHMMSS(totalWeeklyOtSeconds)}
             </p>
             <p className="text-[11px] font-mono text-emerald-300 mt-1">
               +{formatCurrency(totalWeeklyOtPay)} accrued OT pay

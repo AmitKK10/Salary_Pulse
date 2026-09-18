@@ -40,6 +40,7 @@ import {
 } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { WorkSessionEngine } from '../../engine/workSessionEngine';
+import { SalaryEngine } from '../../engine/salaryEngine';
 
 interface DayEditModalProps {
   dayDetails: DayCalculationDetails;
@@ -365,8 +366,8 @@ export const DayEditModal: React.FC<DayEditModalProps> = ({ dayDetails, onClose,
       dayEarned = 0;
     } else {
       const normalActive = Math.min(activeSec, requiredSec);
-      const normalEarned = (normalActive / 3600) * rateDerivation.perHourRate;
-      const otEarned = (otSec / 3600) * (rateDerivation.overtimeHourlyRate || (rateDerivation.perHourRate * (salaryConfig.overtimeMultiplier || 1.5)));
+      const normalEarned = SalaryEngine.calculateDailyEarning(normalActive / 60, rateDerivation.dailyRate);
+      const otEarned = (otSec / 3600) * (rateDerivation.overtimeHourlyRate || 75);
       dayEarned = normalEarned + otEarned;
     }
 

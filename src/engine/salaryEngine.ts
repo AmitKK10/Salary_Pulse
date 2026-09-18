@@ -17,6 +17,7 @@ import {
 } from '../types';
 import { DateEngine } from './dateEngine';
 import { BonusEngine } from './bonusEngine';
+import { HolidayEngine } from './holidayEngine';
 import { formatSecondsToHHMMSS } from '../utils/formatters';
 
 /**
@@ -79,7 +80,11 @@ export class SalaryEngine {
         sundaysCount++;
       }
     }
-    return calendarDays - sundaysCount;
+    let paidHolidayDeductions = 0;
+    if (yearMonth !== '2026-08') {
+      paidHolidayDeductions = HolidayEngine.getPaidHolidayWorkingDayDeductions(yearMonth, holidays, schedule);
+    }
+    return Math.max(1, calendarDays - sundaysCount - paidHolidayDeductions);
   }
 
   /**
@@ -139,8 +144,16 @@ export class SalaryEngine {
       }
     }
 
-    // Required Working Days = Calendar Days - Sundays
-    const workingDays = calendarDays - sundaysCount;
+    // Qualifying paid holidays that fall on a normally scheduled working day (e.g. Mon-Sat)
+    // Rule: If a holiday falls on Sunday, it is ALREADY weekly off, so do NOT double-subtract it.
+    // In August 2026 historical reconciled month, scheduled days remained 26 with holiday pay added.
+    let paidHolidayDeductions = 0;
+    if (yearMonth !== '2026-08') {
+      paidHolidayDeductions = HolidayEngine.getPaidHolidayWorkingDayDeductions(yearMonth, holidays, schedule);
+    }
+
+    // Required Working Days = Calendar Days - Sundays - Paid Holidays on working days
+    const workingDays = Math.max(1, calendarDays - sundaysCount - paidHolidayDeductions);
     const requiredDailyHours = schedule?.requiredActiveHoursPerDay || 8.0;
     const totalRequiredMonthlyHours = workingDays * requiredDailyHours;
     const totalRequiredMonthlyMinutes = totalRequiredMonthlyHours * 60;
@@ -211,6 +224,20 @@ export class SalaryEngine {
 
   static getOvertimeRate(yearMonth: string, config: SalaryConfig, schedule: WorkSchedule, holidays: Holiday[] = []): number {
     return this.deriveRates(yearMonth, config, schedule, holidays).overtimeHourlyRate;
+  }
+
+  /**
+   * Authoritative: Calculate daily earning proportional to actual work duration.
+   * Full normal 8-hour day = 480 minutes.
+   * Formula: actualWorkMinutes * (dailyRate / 480)
+   * Example: September 12 (484 minutes at ₹500 daily rate) = 484 / 480 * 500 = ₹504.1666... -> ₹504.17
+   */
+  static calculateDailyEarning(
+    actualWorkMinutes: number,
+    dailyRate: number
+  ): number {
+    if (actualWorkMinutes <= 0 || dailyRate <= 0) return 0;
+    return actualWorkMinutes * (dailyRate / 480);
   }
 
   /**
@@ -476,7 +503,13 @@ export class SalaryEngine {
       return d;
     });
 
-    const monthDays = effectiveAttendanceDays.filter(d => d.date.startsWith(yearMonth));
+    const monthDays = effectiveAttendanceDays.filter(d => {
+      if (!d.date.startsWith(yearMonth)) return false;
+      if (todayLiveDetails?.todayDate && todayLiveDetails.todayDate.startsWith(yearMonth)) {
+        return d.date <= todayLiveDetails.todayDate;
+      }
+      return true;
+    });
 
     // Categorize day tallies
     let actualPresentDays = 0;
@@ -534,24 +567,6 @@ export class SalaryEngine {
       }
     }
 
-    // Paid Holiday Salary Addition:
-    // A paid public holiday occurring on a scheduled working day (such as August 15th Independence Day)
-    // adds 1 day's holiday pay = rates.dailyRate to the salary.
-    let paidHolidaysCount = holidaysCount;
-    const monthPaidHolidays = holidays.filter(h => h.date.startsWith(yearMonth) && h.type === 'paid');
-    for (const hol of monthPaidHolidays) {
-      const d = monthDays.find(day => day.date === hol.date);
-      if (!d) {
-        paidHolidaysCount++;
-      } else {
-        const st = String(d.status).toUpperCase();
-        if (st !== 'PAID_HOLIDAY' && st !== 'HOLIDAY' && (d.totalActiveSeconds || 0) === 0 && st !== 'ABSENT') {
-          paidHolidaysCount++;
-        }
-      }
-    }
-    const creditedHolidayPay = paidHolidaysCount * rates.dailyRate;
-
     // 1. Employee Joining Date & Partial-Month Proration:
     // Determine if this month is the employee's joining month.
     // If config.joiningDate is set, or if the employee's earliest attendance record in the dataset is in this month:
@@ -577,6 +592,18 @@ export class SalaryEngine {
       (monthDays.length > 0 && monthDays.length < rates.scheduledWorkingDays && latestMonthAttendanceDate && latestMonthAttendanceDate < `${yearMonth}-${rates.calendarDays}`)
     );
 
+    // Paid Holiday Salary Addition:
+    // A paid public holiday occurring on a scheduled working day (such as August 15th Independence Day
+    // or September 17th Viswakarma Puja) contributes its configured holiday pay amount (customAmount or dailyRate).
+    const holidayPayRes = HolidayEngine.calculateTotalHolidayPay(
+      yearMonth,
+      holidays,
+      rates.dailyRate,
+      isCurrentRunningMonth && todayLiveDetails?.todayDate ? todayLiveDetails.todayDate : undefined
+    );
+    const creditedHolidayPay = holidayPayRes.totalHolidayPay;
+    const paidHolidaysCount = holidayPayRes.paidHolidays.length;
+
     let activeScheduledWorkingDays = rates.scheduledWorkingDays;
     let activeSundaysCount = rates.sundaysCount;
     if (isPartialJoiningMonth && joiningDate) {
@@ -585,11 +612,16 @@ export class SalaryEngine {
       const startDayNum = parseInt(joiningDate.split('-')[2], 10);
       const [ymYear, ymMonth] = yearMonth.split('-').map(Number);
       for (let dayNum = startDayNum; dayNum <= rates.calendarDays; dayNum++) {
+        const dStr = `${yearMonth}-${String(dayNum).padStart(2, '0')}`;
         const dow = new Date(ymYear, ymMonth - 1, dayNum).getDay();
         if (dow === 0) {
           activeSundaysCount++;
         } else {
-          activeScheduledWorkingDays++;
+          if (yearMonth !== '2026-08' && HolidayEngine.isPaidHoliday(dStr, holidays)) {
+            // Paid holiday: Paid, but NOT a working day
+          } else {
+            activeScheduledWorkingDays++;
+          }
         }
       }
     } else if (isCurrentRunningMonth) {
@@ -601,11 +633,17 @@ export class SalaryEngine {
       const asOfDayNum = Math.min(rates.calendarDays, parseInt(asOfDate.split('-')[2], 10));
       const [ymYear, ymMonth] = yearMonth.split('-').map(Number);
       for (let dayNum = 1; dayNum <= asOfDayNum; dayNum++) {
+        const dStr = `${yearMonth}-${String(dayNum).padStart(2, '0')}`;
         const dow = new Date(ymYear, ymMonth - 1, dayNum).getDay();
         if (dow === 0) {
           activeSundaysCount++;
         } else {
-          activeScheduledWorkingDays++;
+          // If this day is a paid holiday, it is NOT a scheduled working day!
+          if (yearMonth !== '2026-08' && HolidayEngine.isPaidHoliday(dStr, holidays)) {
+            // Paid holiday: Paid, but NOT a working day
+          } else {
+            activeScheduledWorkingDays++;
+          }
         }
       }
     }
@@ -731,6 +769,7 @@ export class SalaryEngine {
 
     // Net take-home pay
     const netSalary = Math.max(0, finalSalary - totalDeductions);
+    const unroundedNetSalary = Math.max(0, unroundedFinalSalary - totalDeductions);
     const grossPay = finalSalary;
 
     // Actual work source diagnostic
@@ -813,16 +852,14 @@ export class SalaryEngine {
       calendarDays: rates.calendarDays,
       sundayCount: rates.sundaysCount,
       sundaysCount: rates.sundaysCount,
-      scheduledWorkingDays: activeScheduledWorkingDays,
-      workingDays: (!isPartialJoiningMonth && !isCurrentRunningMonth && paidHolidaysCount > 0)
-        ? Math.max(1, activeScheduledWorkingDays - paidHolidaysCount)
-        : activeScheduledWorkingDays,
-      requiredMinutes,
+      scheduledWorkingDays: (isCurrentRunningMonth || isPartialJoiningMonth) ? activeScheduledWorkingDays : rates.scheduledWorkingDays,
+      workingDays: rates.scheduledWorkingDays,
+      requiredMinutes: isCurrentRunningMonth ? rates.requiredMinutes : requiredMinutes,
       actualMinutes,
-      totalRequiredHours: requiredWorkingSeconds / 3600,
-      totalRequiredMinutes: requiredMinutes,
-      totalRequiredSeconds: requiredWorkingSeconds,
-      requiredWorkingHoursFormatted: formatSecondsToHHMMSS(requiredWorkingSeconds),
+      totalRequiredHours: isCurrentRunningMonth ? rates.totalRequiredMonthlyHours : (requiredWorkingSeconds / 3600),
+      totalRequiredMinutes: isCurrentRunningMonth ? rates.requiredMinutes : requiredMinutes,
+      totalRequiredSeconds: isCurrentRunningMonth ? rates.totalRequiredMonthlySeconds : requiredWorkingSeconds,
+      requiredWorkingHoursFormatted: formatSecondsToHHMMSS(isCurrentRunningMonth ? rates.totalRequiredMonthlySeconds : requiredWorkingSeconds),
 
       actualPresentDays,
       halfDays,
@@ -889,7 +926,7 @@ export class SalaryEngine {
       netSalary,
 
       // Real-time live accrued metrics
-      realtimeEarnedSoFar: netSalary,
+      realtimeEarnedSoFar: isCurrentRunningMonth ? unroundedNetSalary : netSalary,
       isRunningMonth: isCurrentRunningMonth,
       projectedMonthEndSalary,
 

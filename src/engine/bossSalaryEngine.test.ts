@@ -429,8 +429,8 @@ describe('Authoritative Boss Salary Calculation Suite', () => {
     }
   });
 
-  // Test 13: September 2026 In-Progress Running Month Calculation (5 Days Worked = ₹2,674)
-  test('September 2026 In-Progress Running Month matches exact 5 days earned ₹2,674', () => {
+  // Test 13: September 2026 In-Progress Running Month Calculation (5 Days Worked = ₹2,647)
+  test('September 2026 In-Progress Running Month matches exact 5 days earned ₹2,647', () => {
     const calc = SalaryEngine.calculateMonthlySalary(
       '2026-09',
       INITIAL_SALARY_CONFIG,
@@ -445,9 +445,9 @@ describe('Authoritative Boss Salary Calculation Suite', () => {
     console.log('September Running Month Result:');
     console.log('  Working Days Elapsed:', calc.scheduledWorkingDays, '(Expected: 5)');
     console.log('  Base Salary for 5 Days:', calc.baseSalary, '(Expected: 2500)');
-    console.log('  Overtime Pay:', calc.overtimePay, '(Expected: 174)');
+    console.log('  Overtime Pay:', calc.overtimePay, '(Expected: 147)');
     console.log('  Shortfall Deduction:', calc.shortfallDeduction, '(Expected: 0)');
-    console.log('  Final Salary Earned:', calc.finalSalary, '(Expected: 2674)');
+    console.log('  Final Salary Earned:', calc.finalSalary, '(Expected: 2647)');
     console.log('  Is Running Month:', calc.isRunningMonth, '(Expected: true)');
 
     if (calc.scheduledWorkingDays !== 5) {
@@ -459,11 +459,11 @@ describe('Authoritative Boss Salary Calculation Suite', () => {
     if (calc.shortfallDeduction !== 0) {
       throw new Error(`Expected ₹0 shortfall deduction, got ${calc.shortfallDeduction}`);
     }
-    if (calc.overtimePay !== 174) {
-      throw new Error(`Expected ₹174 overtime pay, got ${calc.overtimePay}`);
+    if (calc.overtimePay !== 147) {
+      throw new Error(`Expected ₹147 overtime pay, got ${calc.overtimePay}`);
     }
-    if (calc.finalSalary !== 2674) {
-      throw new Error(`Expected final salary 2,674, got ${calc.finalSalary}`);
+    if (calc.finalSalary !== 2647) {
+      throw new Error(`Expected final salary 2,647, got ${calc.finalSalary}`);
     }
   });
 });

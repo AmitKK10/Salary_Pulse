@@ -15,10 +15,12 @@ import { useApp } from '../../context/AppContext';
 import { StatCard } from '../common/StatCard';
 import { ProgressBar } from '../common/ProgressBar';
 import { Badge } from '../common/Badge';
-import { formatCurrency, formatSecondsToClock, formatSecondsToDetailed, formatTimeDisplay, formatDurationHM } from '../../utils/formatters';
+import { formatCurrency, formatSecondsToClock, formatSecondsToDetailed, formatTimeDisplay, formatDurationHM, formatSecondsToHHMMSS } from '../../utils/formatters';
 import { DashboardChartsSection } from '../dashboard/DashboardChartsSection';
+import { CurrentMonthSummaryWidget } from '../dashboard/CurrentMonthSummaryWidget';
 import { WeeklySummaryWidget } from '../dashboard/WeeklySummaryWidget';
 import { WorkProgressPieWidget } from '../dashboard/WorkProgressPieWidget';
+import { LifetimeStatsSection } from '../dashboard/LifetimeStatsSection';
 
 export const DashboardView: React.FC = () => {
   const { 
@@ -47,7 +49,8 @@ export const DashboardView: React.FC = () => {
     endBreak,
     setActiveTab,
     selectedMonth,
-    todayDate
+    todayDate,
+    clockTick
   } = useApp();
 
   const activeWorking = isWorking ?? isCurrentlyWorking;
@@ -214,9 +217,12 @@ export const DashboardView: React.FC = () => {
         {/* Right Metric Pill Cards */}
         <div className="flex flex-wrap sm:flex-nowrap gap-4">
           <div className="bg-[#161616] border border-[#262626] p-4 rounded-xl w-full sm:w-44 shadow-lg">
-            <p className="text-[10px] text-[#737373] uppercase tracking-widest mb-1 font-semibold">Overtime hrs</p>
-            <p className="text-2xl font-semibold text-white font-mono">
-              {(salaryCalculation.overtimeSeconds / 3600).toFixed(1)} <span className="text-xs text-[#737373] font-sans">h</span>
+            <p className="text-[10px] text-[#737373] uppercase tracking-widest mb-1 font-semibold">Overtime</p>
+            <p className="text-xl sm:text-2xl font-semibold text-white font-mono">
+              {formatSecondsToHHMMSS(salaryCalculation.overtimeSeconds)}
+            </p>
+            <p className="text-[10px] text-emerald-400 font-mono mt-0.5">
+              +{formatCurrency(salaryCalculation.overtimePay)} OT pay
             </p>
           </div>
           <div className="bg-[#161616] border border-[#262626] p-4 rounded-xl w-full sm:w-44 shadow-lg">
@@ -224,15 +230,24 @@ export const DashboardView: React.FC = () => {
             <p className="text-2xl font-semibold text-white font-mono">
               {salaryCalculation.actualPresentDays} <span className="text-sm text-[#737373]">/ {salaryCalculation.workingDays || 25}</span>
             </p>
+            <p className="text-[10px] text-sky-400 font-mono mt-0.5">
+              Scheduled Days
+            </p>
           </div>
         </div>
       </div>
+
+      {/* 1.4 CURRENT MONTH SUMMARY WIDGET (WORKED, REQUIRED, REMAINING, EARNED, OT, ATTENDANCE) */}
+      <CurrentMonthSummaryWidget />
 
       {/* 1.5 WEEKLY SUMMARY WIDGET (HIGH-LEVEL BREAKDOWN: HOURS WORKED & ESTIMATED EARNINGS) */}
       <WeeklySummaryWidget />
 
       {/* 1.6 WORK COMPLETED VS REMAINING PIE / DONUT DASHBOARDS (DAILY, WEEKLY, MONTHLY) */}
       <WorkProgressPieWidget />
+
+      {/* 1.7 LIFETIME STATS SECTION (CUMULATIVE INCOME, MONTHS WORKED, HOURS LOGGED, AVG MONTHLY EARNINGS) */}
+      <LifetimeStatsSection />
 
       {/* 2. WEEKLY EFFICIENCY & LIVE PULSE CARDS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

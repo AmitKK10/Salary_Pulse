@@ -32,14 +32,14 @@ export const TimeToMoneyCard: React.FC<TimeToMoneyCardProps> = ({ conversionData
   } = useApp();
 
   // Selected or active month display label
-  const activeMonthString = conversionData.monthLabel || selectedMonth || '2026-08';
+  const activeMonthString = selectedMonth || conversionData.monthLabel || '2026-09';
   const monthDate = new Date(`${activeMonthString}-01T00:00:00`);
   const monthName = !isNaN(monthDate.getTime())
     ? monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : activeMonthString;
 
   // Exact figures from calculation engine
-  const baseSalary = salaryConfig.monthlyBaseSalary || salaryCalculation?.baseSalary || 15000;
+  const baseSalary = salaryCalculation?.baseSalary || salaryConfig.monthlyBaseSalary || 15000;
   const calendarDays = conversionData.calendarDays || salaryCalculation?.calendarDays || 30;
   const workingDays = conversionData.workingDays || salaryCalculation?.workingDays || 25;
 

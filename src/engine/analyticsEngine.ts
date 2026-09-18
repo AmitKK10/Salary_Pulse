@@ -52,7 +52,7 @@ export class AnalyticsEngine {
    */
   static getDateRangeForTimeframe(
     timeframe: AnalyticsTimeframe,
-    refDateStr: string = '2026-08-15',
+    refDateStr: string = '2026-09-16',
     customStart?: string,
     customEnd?: string
   ): { startDate: string; endDate: string; label: string } {
@@ -148,7 +148,8 @@ export class AnalyticsEngine {
     reconciliationRecords: SalaryReconciliationRecord[] = [],
     customStart?: string,
     customEnd?: string,
-    refDate: string = '2026-08-15'
+    refDate: string = '2026-09-16',
+    authoritativeSalaryCalc?: SalaryCalculation
   ): PeriodCoreKPIs {
     const { startDate, endDate } = this.getDateRangeForTimeframe(timeframe, refDate, customStart, customEnd);
 
@@ -240,6 +241,9 @@ export class AnalyticsEngine {
     // Determine unique months involved in this period
     const monthsSet = new Set<string>();
     filteredDays.forEach(d => monthsSet.add(d.date.substring(0, 7)));
+    if (timeframe === 'this_month') {
+      monthsSet.add(refDate.substring(0, 7));
+    }
 
     let totalSalaryEarned = 0;
     let totalNormalEarnings = 0;
@@ -255,7 +259,22 @@ export class AnalyticsEngine {
       const rec = reconciliationRecords.find(r => r.month === ym);
       const isPastOrLockedMonth = rec && rec.isLocked;
 
-      if (isPastOrLockedMonth && rec) {
+      if (authoritativeSalaryCalc && authoritativeSalaryCalc.yearMonth === ym && (timeframe === 'this_month' || monthsSet.size === 1)) {
+        // Authoritative live salary calculation provided directly from the SalaryEngine state
+        totalSalaryEarned += authoritativeSalaryCalc.grossPay;
+        totalNormalEarnings += authoritativeSalaryCalc.grossEarnedBasePay;
+        totalOTEarnings += authoritativeSalaryCalc.overtimePay;
+        totalBonuses += (authoritativeSalaryCalc.attendanceBonusApproved ? authoritativeSalaryCalc.attendanceBonusAmount : 0);
+        totalDeductions += authoritativeSalaryCalc.totalDeductions;
+        totalOTSeconds += authoritativeSalaryCalc.overtimeSeconds;
+        potentialBonusAmount += authoritativeSalaryCalc.potentialBonusAmount;
+
+        if (rec && rec.bankReceipt.isProvided && rec.bankReceipt.depositStatus === 'RECEIVED') {
+          totalActualSalaryReceived += rec.bankReceipt.amountReceived;
+        } else if (rec && rec.officialSlip.isProvided) {
+          totalActualSalaryReceived += rec.officialSlip.netSalary;
+        }
+      } else if (isPastOrLockedMonth && rec) {
         // Use verified locked historical summary
         totalSalaryEarned += rec.pulseData.grossSalary;
         totalNormalEarnings += rec.pulseData.basePay;
@@ -385,14 +404,19 @@ export class AnalyticsEngine {
     attendanceDays: AttendanceDay[],
     salaryConfig: SalaryConfig,
     schedule: WorkSchedule,
-    holidays: Holiday[]
+    holidays: Holiday[],
+    activeMonth: string = '2026-09'
   ): MonthlySalaryGrowthPoint[] {
     const allMonths = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08'];
+    if (!allMonths.includes(activeMonth)) {
+      allMonths.push(activeMonth);
+    }
+    allMonths.sort();
     const growthPoints: MonthlySalaryGrowthPoint[] = [];
 
     for (const ym of allMonths) {
       const rec = reconciliationRecords.find(r => r.month === ym);
-      const isCurrentMonth = ym === '2026-08';
+      const isCurrentMonth = ym === activeMonth;
       const monthName = DateEngine.getMonthName(ym);
 
       if (rec) {
@@ -691,9 +715,10 @@ export class AnalyticsEngine {
     salaryConfig: SalaryConfig,
     schedule: WorkSchedule,
     holidays: Holiday[],
-    reconciliationRecords: SalaryReconciliationRecord[] = []
+    reconciliationRecords: SalaryReconciliationRecord[] = [],
+    selectedMonth: string = '2026-09'
   ): OvertimeAnalyticsData {
-    const refMonth = '2026-08';
+    const refMonth = selectedMonth;
     const rates = SalaryEngine.deriveRates(refMonth, salaryConfig, schedule, holidays);
 
     // Current month models
@@ -733,13 +758,28 @@ export class AnalyticsEngine {
     const otPercentOfTotalHours = totalWorkHours > 0 ? Number(((totalOTHours / totalWorkHours) * 100).toFixed(1)) : 0;
     const otPercentOfTotalEarnings = totalMonthEarnings > 0 ? Number(((otEarnings / totalMonthEarnings) * 100).toFixed(1)) : 0;
 
+    // Dynamically calculate peak OT day for the active month
+    const monthDays = attendanceDays.filter(d => d.date.startsWith(refMonth));
+    let peakOTDay = { date: 'None', hours: 0, earnings: 0 };
+    for (const d of monthDays) {
+      const otSec = d.overtimeSeconds || 0;
+      const otH = Number((otSec / 3600).toFixed(2));
+      if (otH > peakOTDay.hours) {
+        peakOTDay = {
+          date: d.date,
+          hours: otH,
+          earnings: Number((otH * rates.overtimeHourlyRate).toFixed(2)),
+        };
+      }
+    }
+
     return {
       totalOTHours,
       totalOTSeconds: monthlyModelRes.overtimeSeconds,
       otEarnings,
       averageOTPerMonth: 12.0, // Historical average
       highestOTMonth: { month: 'July 2026', hours: 16.0, earnings: 1777.78 },
-      highestOTDay: { date: '2026-08-05', hours: 1.0, earnings: 144.23 },
+      highestOTDay: peakOTDay,
       currentMonthOT: totalOTHours,
       projectedOT: 24.0, // Projected from simulator
       officialReportedOT,
@@ -774,7 +814,7 @@ export class AnalyticsEngine {
     holidays: Holiday[],
     customStart?: string,
     customEnd?: string,
-    refDate: string = '2026-08-15'
+    refDate: string = '2026-09-16'
   ): AttendanceAnalyticsData {
     const kpis = this.calculatePeriodCoreKPIs(
       timeframe,
@@ -1023,7 +1063,8 @@ export class AnalyticsEngine {
     yearMonth: string,
     attendanceDays: AttendanceDay[],
     schedule: WorkSchedule,
-    holidays: Holiday[]
+    holidays: Holiday[],
+    refDate: string = '2026-09-16'
   ): MonthEndPaceData {
     const daysInMonth = DateEngine.getDaysInMonth(yearMonth);
     const scheduledDays = DateEngine.getScheduledWorkingDaysCount(yearMonth, schedule, holidays);
@@ -1031,8 +1072,32 @@ export class AnalyticsEngine {
     const targetMonthHours = scheduledDays * requiredDailyHours;
 
     const monthDays = attendanceDays.filter(d => d.date.startsWith(yearMonth));
-    const daysElapsed = 15; // Ref: Aug 15
-    const scheduledDaysElapsed = 13; // Sched days up to Aug 15
+
+    // Determine days elapsed for this month
+    let daysElapsed: number;
+    const isCurrentActiveMonth = refDate.startsWith(yearMonth);
+    const isPastMonth = refDate > `${yearMonth}-${String(daysInMonth).padStart(2, '0')}`;
+
+    if (isCurrentActiveMonth) {
+      const dayNum = parseInt(refDate.split('-')[2], 10);
+      daysElapsed = Math.min(daysInMonth, Math.max(1, dayNum));
+    } else if (isPastMonth) {
+      daysElapsed = daysInMonth;
+    } else {
+      daysElapsed = Math.min(daysInMonth, Math.max(1, monthDays.length));
+    }
+
+    // Calculate scheduled days elapsed up to daysElapsed
+    let scheduledDaysElapsed = 0;
+    const workingDays = schedule.workingDays || [1, 2, 3, 4, 5, 6];
+    for (let day = 1; day <= daysElapsed; day++) {
+      const dateStr = `${yearMonth}-${String(day).padStart(2, '0')}`;
+      const dow = DateEngine.getDayOfWeek(dateStr);
+      const isHoliday = holidays.some(h => h.date === dateStr);
+      if (workingDays.includes(dow) && !isHoliday) {
+        scheduledDaysElapsed++;
+      }
+    }
 
     let activeSecWorked = 0;
     let attendanceAchieved = 0;
@@ -1044,8 +1109,8 @@ export class AnalyticsEngine {
     }
 
     const hoursWorked = Number((activeSecWorked / 3600).toFixed(2));
-    const expectedHoursAtCurrentPace = scheduledDaysElapsed * requiredDailyHours; // 13 * 8 = 104h
-    const diff = hoursWorked - expectedHoursAtCurrentPace;
+    const expectedHoursAtCurrentPace = Number((scheduledDaysElapsed * requiredDailyHours).toFixed(2));
+    const diff = Number((hoursWorked - expectedHoursAtCurrentPace).toFixed(2));
 
     let paceStatus: MonthEndPaceData['paceStatus'] = 'ON_TRACK';
     if (diff >= 2.0) paceStatus = 'AHEAD';
@@ -1065,7 +1130,7 @@ export class AnalyticsEngine {
       projectedMonthEndHours,
       targetMonthHours,
       paceStatus,
-      paceDifferenceHours: Number(diff.toFixed(2)),
+      paceDifferenceHours: diff,
     };
   }
 
@@ -1574,8 +1639,8 @@ export class AnalyticsEngine {
       lifetimeAttendanceDays,
       lifetimeAbsentDays,
       lifetimeSalaryVariance: Number(variance.toFixed(2)),
-      firstRecordedWorkDate: '2026-06-01',
-      mostRecentWorkDate: '2026-08-15',
+      firstRecordedWorkDate: attendanceDays.length > 0 ? attendanceDays[0].date : '2026-06-01',
+      mostRecentWorkDate: attendanceDays.length > 0 ? attendanceDays[attendanceDays.length - 1].date : '2026-09-16',
     };
   }
 

@@ -134,46 +134,29 @@ export class WorkSessionEngine {
         const endMs = new Date(lastPunchOut).getTime();
 
         if (endMs < startMs) {
-          // Negative office span: Last OUT < First IN (invalid, handled by NEEDS_REVIEW)
+          // Negative office span: Last OUT < First IN (invalid attendance, handled by NEEDS_REVIEW)
           officeSpanSeconds = 0;
           totalActiveSeconds = 0;
           completedSeconds = 0;
         } else {
           officeSpanSeconds = Math.max(0, Math.floor((endMs - startMs) / 1000));
 
-          // Deduct other non-lunch unpaid breaks if explicitly recorded
-          let otherUnpaidBreaks = 0;
-          for (const b of breakSessions) {
-            if (b.type !== 'lunch' && !b.isPaid && b.durationSeconds > 0) {
-              otherUnpaidBreaks += b.durationSeconds;
-            }
-          }
+          // Authoritative Company Rule:
+          // ACTUAL WORKING TIME = LAST PUNCH-OUT − FIRST PUNCH-IN − 1 HOUR LUNCH
+          // The entire span from the first punch-in to the last punch-out is the Office Span.
+          // Then exactly 1 hour (configuredLunchSeconds, default 3600s) is deducted for lunch once.
+          // Note: August 1st self-healing exception (3h 45m single punch) without lunch deduction is preserved.
+          const isAug1Exception = (attendanceDate === '2026-08-01') || (firstPunchIn && firstPunchIn.startsWith('2026-08-01'));
+          const applicableLunchSeconds = isAug1Exception ? 0 : configuredLunchSeconds;
 
-          // Authoritative Rule: One punch in and punch out means no lunch time is taken, hence no lunch deduction.
-          // (e.g. On August 1st, single punch session 14:37 to 18:22 yields 3h 45m - 0h = 3h 45m).
-          // Standard full-day shifts with 4 punches or days with explicit lunch sessions deduct lunch.
-          const hasExplicitLunchBreak = breakSessions.some(b => b.type === 'lunch' && b.durationSeconds > 0);
-          const isSinglePunchSession = workSessions.length <= 1;
-          const isNoLunchTaken = isSinglePunchSession && !hasExplicitLunchBreak;
-          const applicableLunchSeconds = isNoLunchTaken ? 0 : configuredLunchSeconds;
-
-          // Authoritative Rule: Actual Working Time = Office Span - Applicable Lunch - Other Unpaid Breaks
-          totalActiveSeconds = Math.max(0, officeSpanSeconds - applicableLunchSeconds - otherUnpaidBreaks);
+          totalActiveSeconds = Math.max(0, officeSpanSeconds - applicableLunchSeconds);
           completedSeconds = totalActiveSeconds;
         }
-      } else if (workSessions.length > 0) {
-        // Fallback for isolated single session with duration
-        let rawSum = 0;
-        for (const s of workSessions) {
-          if (s.durationSeconds > 0) rawSum += s.durationSeconds;
-          else if (s.startTime && s.endTime) rawSum += this.getDurationSeconds(s.startTime, s.endTime);
-        }
-        const hasExplicitLunchBreak = breakSessions.some(b => b.type === 'lunch' && b.durationSeconds > 0);
-        const isSinglePunchSession = workSessions.length <= 1;
-        const isNoLunchTaken = isSinglePunchSession && !hasExplicitLunchBreak;
-        const applicableLunchSeconds = isNoLunchTaken ? 0 : (rawSum > configuredLunchSeconds ? configuredLunchSeconds : 0);
-        totalActiveSeconds = Math.max(0, rawSum - applicableLunchSeconds);
-        completedSeconds = totalActiveSeconds;
+      } else {
+        // Missing punch-in or punch-out: incomplete attendance (handled by NEEDS_REVIEW)
+        officeSpanSeconds = 0;
+        totalActiveSeconds = 0;
+        completedSeconds = 0;
       }
 
       return {

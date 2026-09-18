@@ -11,6 +11,7 @@ import {
   WorkSchedule 
 } from '../types';
 import { getDemoEmployeeAttendanceDays } from '../data/employeeDemoPunches';
+import { SEPTEMBER_EXTENDED_ATTENDANCE_DAYS } from '../data/septemberExtendedAttendance';
 
 export const INITIAL_USER: User = {
   id: 'EMP-2026-884',
@@ -97,10 +98,27 @@ export const INITIAL_HOLIDAYS: Holiday[] = [
     type: 'paid',
     creditedHours: 8.0,
   },
+  {
+    id: 'hol-1789498584241',
+    date: '2026-09-17',
+    name: 'Viswakarma Puja',
+    type: 'paid',
+    creditedHours: 8.0,
+    customAmount: 500,
+  },
 ];
 
-// Official Employee Punch Records (May, June, and August 2026 logs)
-export const INITIAL_ATTENDANCE_DAYS: AttendanceDay[] = getDemoEmployeeAttendanceDays(8.0);
+// Helper to construct the full authoritative 82-day attendance records
+function buildAllSeededAttendanceDays(): AttendanceDay[] {
+  const baseDays = getDemoEmployeeAttendanceDays(8.0);
+  const datesMap = new Map<string, AttendanceDay>();
+  baseDays.forEach(d => datesMap.set(d.date, d));
+  SEPTEMBER_EXTENDED_ATTENDANCE_DAYS.forEach(d => datesMap.set(d.date, d));
+  return Array.from(datesMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Official Employee Punch Records (82 days: May 25, 2026 to Sep 16, 2026)
+export const INITIAL_ATTENDANCE_DAYS: AttendanceDay[] = buildAllSeededAttendanceDays();
 
 export const INITIAL_SALARY_RECONCILIATION_RECORDS: import('../types').SalaryReconciliationRecord[] = [
   {

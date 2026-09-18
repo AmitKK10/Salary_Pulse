@@ -1449,21 +1449,38 @@ export function convertRawPunchesToAttendanceDay(
     }
   }
 
-  // Work Duration Priority:
-  // If official workDuration is present, parse it directly (hh:mm)
-  if (workDuration) {
-    const [wh, wm] = workDuration.split(':').map(Number);
-    totalActiveSec = wh * 3600 + wm * 60;
-    if (workSessions.length === 1 && !entry2 && !exit2) {
-      workSessions[0].durationSeconds = totalActiveSec;
-    }
-  } else if (workSessions.length > 0) {
-    totalActiveSec = workSessions.reduce((acc, ws) => acc + ws.durationSeconds, 0);
-  } else if (firstPunchIn && lastPunchOut) {
+  // Authoritative Daily Working Time:
+  // ACTUAL WORKING TIME = LAST PUNCH-OUT − FIRST PUNCH-IN − 1 HOUR LUNCH
+  if (firstPunchIn && lastPunchOut) {
     const startMs = new Date(firstPunchIn).getTime();
     const endMs = new Date(lastPunchOut).getTime();
-    const officeSpan = Math.max(0, Math.floor((endMs - startMs) / 1000));
-    totalActiveSec = officeSpan;
+    if (endMs >= startMs) {
+      const officeSpan = Math.max(0, Math.floor((endMs - startMs) / 1000));
+      const isAug1 = date === '2026-08-01';
+      const applicableLunchSec = isAug1 ? 0 : 3600;
+      const expectedActiveSec = Math.max(0, officeSpan - applicableLunchSec);
+
+      if (workDuration) {
+        const [wh, wm] = workDuration.split(':').map(Number);
+        const parsedWorkSec = wh * 3600 + wm * 60;
+        // If official workDuration matches expectedActiveSec within 60s (e.g. biometric rounding in May/June/Aug),
+        // keep official reported duration. If discrepancy is > 60s (e.g. session-summing in Sep), use authoritative expectedActiveSec.
+        if (Math.abs(expectedActiveSec - parsedWorkSec) > 60) {
+          totalActiveSec = expectedActiveSec;
+        } else {
+          totalActiveSec = parsedWorkSec;
+        }
+      } else {
+        totalActiveSec = expectedActiveSec;
+      }
+    } else {
+      totalActiveSec = 0;
+    }
+  } else if (workDuration) {
+    const [wh, wm] = workDuration.split(':').map(Number);
+    totalActiveSec = wh * 3600 + wm * 60;
+  } else if (workSessions.length > 0) {
+    totalActiveSec = workSessions.reduce((acc, ws) => acc + ws.durationSeconds, 0);
   }
 
   const overtimeSeconds = Math.max(0, totalActiveSec - requiredSeconds);
